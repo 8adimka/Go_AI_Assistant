@@ -9,7 +9,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/acai-travel/tech-challenge/internal/pb"
+	"github.com/8adimka/Go_AI_Assistant/internal/pb"
 )
 
 func main() {

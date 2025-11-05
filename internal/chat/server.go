@@ -6,8 +6,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/acai-travel/tech-challenge/internal/chat/model"
-	"github.com/acai-travel/tech-challenge/internal/pb"
+	"github.com/8adimka/Go_AI_Assistant/internal/chat/model"
+	"github.com/8adimka/Go_AI_Assistant/internal/pb"
 	"github.com/twitchtv/twirp"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 )

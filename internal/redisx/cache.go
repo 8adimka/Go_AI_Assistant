@@ -27,15 +27,15 @@ func NewCache(client *redis.Client, ttl time.Duration) *Cache {
 	}
 }
 
-// MustConnect создает подключение к Redis или паникует при ошибке
-func MustConnect() *redis.Client {
+// MustConnect creates a Redis connection or panics on error
+func MustConnect(addr string) *redis.Client {
 	client := redis.NewClient(&redis.Options{
-		Addr:     "localhost:6379",
+		Addr:     addr,
 		Password: "", // no password set
 		DB:       0,  // use default DB
 	})
 
-	// Проверяем подключение
+	// Test connection
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
@@ -43,11 +43,11 @@ func MustConnect() *redis.Client {
 		panic(fmt.Sprintf("failed to connect to Redis: %v", err))
 	}
 
-	slog.Info("Successfully connected to Redis")
+	slog.Info("Successfully connected to Redis", "addr", addr)
 	return client
 }
 
-// Get получает значение из кэша
+// Get retrieves a value from cache
 func (c *Cache) Get(ctx context.Context, key string, dest interface{}) error {
 	data, err := c.client.Get(ctx, key).Result()
 	if err != nil {
@@ -64,7 +64,7 @@ func (c *Cache) Get(ctx context.Context, key string, dest interface{}) error {
 	return nil
 }
 
-// Set сохраняет значение в кэш
+// Set stores a value in cache
 func (c *Cache) Set(ctx context.Context, key string, value interface{}) error {
 	data, err := json.Marshal(value)
 	if err != nil {
@@ -78,7 +78,7 @@ func (c *Cache) Set(ctx context.Context, key string, value interface{}) error {
 	return nil
 }
 
-// Delete удаляет значение из кэша
+// Delete removes a value from cache
 func (c *Cache) Delete(ctx context.Context, key string) error {
 	if err := c.client.Del(ctx, key).Err(); err != nil {
 		return fmt.Errorf("failed to delete from cache: %w", err)
@@ -86,8 +86,8 @@ func (c *Cache) Delete(ctx context.Context, key string) error {
 	return nil
 }
 
-// GenerateKey генерирует ключ для кэша на основе контента
+// GenerateKey generates a cache key based on content
 func (c *Cache) GenerateKey(prefix string, content string) string {
-	// В production можно использовать хеш для безопасности
+	// In production, consider using hash for security
 	return fmt.Sprintf("%s:%s", prefix, content)
 }

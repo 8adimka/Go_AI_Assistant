@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/acai-travel/tech-challenge/internal/chat/model"
+	"github.com/8adimka/Go_AI_Assistant/internal/chat/model"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 

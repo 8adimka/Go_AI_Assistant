@@ -1,4 +1,4 @@
-module github.com/acai-travel/tech-challenge
+module github.com/8adimka/Go_AI_Assistant
 
 go 1.24.1
 
@@ -7,6 +7,7 @@ require (
 	github.com/google/go-cmp v0.6.0
 	github.com/google/uuid v1.6.0
 	github.com/gorilla/mux v1.8.1
+	github.com/joho/godotenv v1.5.1
 	github.com/openai/openai-go/v2 v2.1.0
 	github.com/redis/go-redis/v9 v9.16.0
 	github.com/twitchtv/twirp v8.1.3+incompatible

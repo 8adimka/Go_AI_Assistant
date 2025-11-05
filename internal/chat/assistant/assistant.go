@@ -9,8 +9,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/acai-travel/tech-challenge/internal/chat/model"
-	"github.com/acai-travel/tech-challenge/internal/redisx"
+	"github.com/8adimka/Go_AI_Assistant/internal/chat/model"
+	"github.com/8adimka/Go_AI_Assistant/internal/config"
+	"github.com/8adimka/Go_AI_Assistant/internal/redisx"
 	ics "github.com/arran4/golang-ical"
 	"github.com/openai/openai-go/v2"
 )
@@ -21,8 +22,10 @@ type Assistant struct {
 }
 
 func New() *Assistant {
-	redisClient := redisx.MustConnect()
-	cache := redisx.NewCache(redisClient, 24*time.Hour) // Кэш на 24 часа
+	// Load configuration to get Redis address
+	cfg := config.Load()
+	redisClient := redisx.MustConnect(cfg.RedisAddr)
+	cache := redisx.NewCache(redisClient, 24*time.Hour) // Cache for 24 hours
 	
 	return &Assistant{
 		cli:   openai.NewClient(),
@@ -37,7 +40,7 @@ func (a *Assistant) Title(ctx context.Context, conv *model.Conversation) (string
 
 	slog.InfoContext(ctx, "Generating title for conversation", "conversation_id", conv.ID)
 
-	// Пытаемся получить из кэша
+	// Try to get from cache first
 	userMessage := conv.Messages[0].Content
 	cacheKey := a.cache.GenerateKey("title", userMessage)
 	
@@ -49,7 +52,7 @@ func (a *Assistant) Title(ctx context.Context, conv *model.Conversation) (string
 		slog.WarnContext(ctx, "Cache error, proceeding without cache", "error", err)
 	}
 
-	// Улучшенный промпт для генерации заголовков
+	// Improved prompt for title generation
 	titlePrompt := `Generate a very concise and descriptive title for this conversation. 
 The title should:
 - Be 3-7 words maximum
@@ -72,9 +75,9 @@ Generate title for:`
 	}
 
 	resp, err := a.cli.Chat.Completions.New(ctx, openai.ChatCompletionNewParams{
-		Model:    openai.ChatModelGPT4Turbo, // Более быстрая модель для заголовков
+		Model:    openai.ChatModelGPT4Turbo, // Faster model for titles
 		Messages: msgs,
-		MaxTokens: openai.Int(30), // Ограничиваем токены для краткости
+		MaxTokens: openai.Int(30), // Limit tokens for brevity
 	})
 
 	if err != nil {
@@ -88,7 +91,7 @@ Generate title for:`
 	title := resp.Choices[0].Message.Content
 	title = a.formatTitle(title)
 
-	// Сохраняем в кэш
+	// Save to cache
 	if err := a.cache.Set(ctx, cacheKey, title); err != nil {
 		slog.WarnContext(ctx, "Failed to cache title", "error", err)
 	}
@@ -96,39 +99,39 @@ Generate title for:`
 	return title, nil
 }
 
-// formatTitle форматирует и валидирует заголовок
+// formatTitle formats and validates the title
 func (a *Assistant) formatTitle(title string) string {
-	// Убираем лишние пробелы и переносы строк
+	// Remove extra spaces and newlines
 	title = strings.TrimSpace(title)
 	title = strings.ReplaceAll(title, "\n", " ")
 	
-	// Убираем кавычки и другие специальные символы
+	// Remove quotes and other special characters
 	title = strings.Trim(title, " \"'`-")
 	
-	// Ограничиваем длину
+	// Limit length
 	if len(title) > 60 {
 		title = title[:60]
 	}
 	
-	// Приводим к Title Case
+	// Convert to Title Case
 	title = a.toTitleCase(title)
 	
 	return title
 }
 
-// toTitleCase преобразует строку в Title Case
+// toTitleCase converts string to Title Case
 func (a *Assistant) toTitleCase(s string) string {
 	words := strings.Fields(s)
 	for i, word := range words {
 		if len(word) > 0 {
-			// Все слова кроме коротких союзов и предлогов получают заглавную букву
+			// All words except short conjunctions and prepositions get capitalized
 			shortWords := map[string]bool{
 				"a": true, "an": true, "the": true, "and": true, "but": true, "or": true,
 				"for": true, "nor": true, "on": true, "at": true, "to": true, "by": true,
 				"in": true, "of": true, "with": true,
 			}
 			
-			// Первое слово всегда с заглавной буквы
+			// First word is always capitalized
 			if i == 0 || !shortWords[strings.ToLower(word)] {
 				words[i] = strings.ToUpper(word[:1]) + strings.ToLower(word[1:])
 			} else {
