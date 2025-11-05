@@ -140,11 +140,11 @@ Response:
 ### Send Message to Conversation
 
 ```bash
-curl -X POST http://localhost:8080/twirp/acai.chat.ChatService/SendMessage \
+curl -X POST http://localhost:8080/twirp/acai.chat.ChatService/ContinueConversation \
   -H "Content-Type: application/json" \
   -d '{
-    "conversation_id": "690b5b2b1ce3d57c09602ecf",
-    "message": "What about tomorrow?"
+    "conversation_id": "690b725abf5cf39a2b66b3db",
+    "message": "What should I wear today in Madrid?"
   }' | jq
 ```
 
