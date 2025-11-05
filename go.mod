@@ -12,6 +12,7 @@ require (
 	github.com/redis/go-redis/v9 v9.16.0
 	github.com/twitchtv/twirp v8.1.3+incompatible
 	go.mongodb.org/mongo-driver v1.17.4
+	golang.org/x/time v0.14.0
 	google.golang.org/protobuf v1.36.7
 )
 

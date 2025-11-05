@@ -12,24 +12,30 @@ import (
 	"github.com/8adimka/Go_AI_Assistant/internal/chat/model"
 	"github.com/8adimka/Go_AI_Assistant/internal/config"
 	"github.com/8adimka/Go_AI_Assistant/internal/redisx"
+	"github.com/8adimka/Go_AI_Assistant/internal/weather"
 	ics "github.com/arran4/golang-ical"
 	"github.com/openai/openai-go/v2"
 )
 
 type Assistant struct {
-	cli   openai.Client
-	cache *redisx.Cache
+	cli           openai.Client
+	cache         *redisx.Cache
+	weatherService *weather.FallbackWeatherService
 }
 
 func New() *Assistant {
-	// Load configuration to get Redis address
+	// Load configuration
 	cfg := config.Load()
 	redisClient := redisx.MustConnect(cfg.RedisAddr)
 	cache := redisx.NewCache(redisClient, 24*time.Hour) // Cache for 24 hours
 	
+	// Create weather service with fallback
+	weatherService := weather.CreateWeatherService(cfg.WeatherApiKey, cache)
+	
 	return &Assistant{
-		cli:   openai.NewClient(),
-		cache: cache,
+		cli:           openai.NewClient(),
+		cache:         cache,
+		weatherService: weatherService,
 	}
 }
 
@@ -224,7 +230,30 @@ func (a *Assistant) Reply(ctx context.Context, conv *model.Conversation) (string
 
 				switch call.Function.Name {
 				case "get_weather":
-					msgs = append(msgs, openai.ToolMessage("weather is fine", call.ID))
+					var payload struct {
+						Location string `json:"location"`
+					}
+					
+					if err := json.Unmarshal([]byte(call.Function.Arguments), &payload); err != nil {
+						msgs = append(msgs, openai.ToolMessage("failed to parse location: "+err.Error(), call.ID))
+						break
+					}
+					
+					if payload.Location == "" {
+						msgs = append(msgs, openai.ToolMessage("location is required", call.ID))
+						break
+					}
+					
+					// Get real weather data with fallback
+					weatherData, err := a.weatherService.GetCurrentWithFallback(ctx, payload.Location)
+					if err != nil {
+						slog.ErrorContext(ctx, "Failed to get weather data", "location", payload.Location, "error", err)
+						msgs = append(msgs, openai.ToolMessage("weather data unavailable", call.ID))
+						break
+					}
+					
+					weatherMessage := weather.FormatWeather(weatherData)
+					msgs = append(msgs, openai.ToolMessage(weatherMessage, call.ID))
 				case "get_today_date":
 					msgs = append(msgs, openai.ToolMessage(time.Now().Format(time.RFC3339), call.ID))
 				case "get_holidays":

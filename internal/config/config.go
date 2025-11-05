@@ -11,6 +11,7 @@ import (
 // Config holds all configuration parameters
 type Config struct {
 	OpenAIApiKey      string
+	WeatherApiKey     string
 	HolidayCalendarLink string
 	RedisAddr         string
 	MongoURI          string
@@ -27,6 +28,7 @@ func Load() *Config {
 
 	config := &Config{
 		OpenAIApiKey:      getEnv("OPENAI_API_KEY", ""),
+		WeatherApiKey:     getEnv("WEATHER_API_KEY", ""),
 		HolidayCalendarLink: getEnv("HOLIDAY_CALENDAR_LINK", "https://www.officeholidays.com/ics/spain/catalonia"),
 		RedisAddr:         getEnv("REDIS_ADDR", "localhost:6379"),
 		MongoURI:          getEnv("MONGO_URI", "mongodb://acai:travel@localhost:27017"),
