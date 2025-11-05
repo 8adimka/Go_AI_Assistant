@@ -1,0 +1,76 @@
+syntax = "proto3";
+
+package acai.chat;
+
+import "google/protobuf/timestamp.proto";
+
+option go_package = "internal/pb";
+
+service ChatService {
+  // Create a new conversation by sending a message and getting a reply
+  // use ContinueConversation with the returned conversation_id to continue the conversation
+  rpc StartConversation(StartConversationRequest) returns (StartConversationResponse);
+
+  // Continue an existing conversation by adding a new message and getting a reply
+  rpc ContinueConversation(ContinueConversationRequest) returns (ContinueConversationResponse);
+
+  // List most recent conversations
+  rpc ListConversations(ListConversationsRequest) returns (ListConversationsResponse);
+
+  // Describe a conversation by its ID
+  rpc DescribeConversation(DescribeConversationRequest) returns (DescribeConversationResponse);
+}
+
+message Conversation {
+  enum Role {
+    UNKNOWN = 0;
+    USER = 1;
+    ASSISTANT = 2;
+  }
+
+  message Message {
+    string id = 1;
+    Role role = 2;
+    string content = 3;
+    google.protobuf.Timestamp timestamp = 4;
+  }
+
+  string id = 1;
+  string title = 2;
+  google.protobuf.Timestamp timestamp = 3;
+  repeated Message messages = 4;
+}
+
+message StartConversationRequest {
+  string message = 1;
+}
+
+message StartConversationResponse {
+  string conversation_id = 1;
+  string title = 2;
+  string reply = 3;
+}
+
+message ContinueConversationRequest {
+  string conversation_id = 1;
+  string message = 2;
+}
+
+message ContinueConversationResponse {
+  string reply = 1;
+}
+
+message ListConversationsRequest {
+}
+
+message ListConversationsResponse {
+  repeated Conversation conversations = 1;
+}
+
+message DescribeConversationRequest {
+  string conversation_id = 1;
+}
+
+message DescribeConversationResponse {
+  Conversation conversation = 1;
+}
