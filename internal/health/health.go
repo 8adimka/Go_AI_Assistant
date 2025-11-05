@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/redis/go-redis/v9"
 	"go.mongodb.org/mongo-driver/mongo"
 )
 
@@ -19,12 +20,14 @@ type HealthResponse struct {
 // HealthChecker handles health checks
 type HealthChecker struct {
 	mongoClient *mongo.Client
+	redisClient *redis.Client
 }
 
 // NewHealthChecker creates a new health checker
-func NewHealthChecker(mongoClient *mongo.Client) *HealthChecker {
+func NewHealthChecker(mongoClient *mongo.Client, redisClient *redis.Client) *HealthChecker {
 	return &HealthChecker{
 		mongoClient: mongoClient,
+		redisClient: redisClient,
 	}
 }
 
@@ -49,6 +52,21 @@ func (h *HealthChecker) HealthHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	} else {
 		response.Checks["mongodb"] = "not configured"
+	}
+
+	// Check Redis connection
+	if h.redisClient != nil {
+		ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
+		defer cancel()
+
+		if err := h.redisClient.Ping(ctx).Err(); err != nil {
+			response.Status = "unhealthy"
+			response.Checks["redis"] = "failed: " + err.Error()
+		} else {
+			response.Checks["redis"] = "ok"
+		}
+	} else {
+		response.Checks["redis"] = "not configured"
 	}
 
 	// Set response status code
@@ -84,6 +102,22 @@ func (h *HealthChecker) ReadyHandler(w http.ResponseWriter, r *http.Request) {
 	} else {
 		response.Status = "not ready"
 		response.Checks["mongodb"] = "not configured"
+	}
+
+	// Check Redis connection for readiness
+	if h.redisClient != nil {
+		ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
+		defer cancel()
+
+		if err := h.redisClient.Ping(ctx).Err(); err != nil {
+			response.Status = "not ready"
+			response.Checks["redis"] = "failed: " + err.Error()
+		} else {
+			response.Checks["redis"] = "ok"
+		}
+	} else {
+		response.Status = "not ready"
+		response.Checks["redis"] = "not configured"
 	}
 
 	// Set response status code

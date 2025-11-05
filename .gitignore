@@ -60,3 +60,19 @@ htmlcov/
 *.dll
 *.so
 *.dylib
+
+# Go test artifacts
+*.test
+*.out
+coverage.out
+coverage.html
+
+# Database and cache data
+/data/
+/tmp/
+backups/
+
+# Docker volumes (if local bind mounts used)
+mongodb_data/
+mongodb_config/
+redis_data/

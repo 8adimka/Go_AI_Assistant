@@ -1,26 +1,38 @@
-version: "3"
+version: "3.8"
 
 services:
-  mongo:
-    image: mongo
+  mongodb:
+    image: mongo:7
+    container_name: mongodb
     environment:
       - MONGO_INITDB_ROOT_USERNAME=acai
       - MONGO_INITDB_ROOT_PASSWORD=travel
     ports:
       - "27017:27017"
+    volumes:
+      - mongodb_data:/data/db
+      - mongodb_config:/data/configdb
     healthcheck:
-      test: ["CMD", "mongo"]
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
       interval: 10s
       timeout: 10s
       retries: 5
 
   redis:
     image: redis:7-alpine
+    container_name: redis
     ports:
       - "6379:6379"
     command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
       timeout: 5s
       retries: 3
+
+volumes:
+  mongodb_data:
+  mongodb_config:
+  redis_data:

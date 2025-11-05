@@ -2,6 +2,8 @@ package redisx
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -86,8 +88,9 @@ func (c *Cache) Delete(ctx context.Context, key string) error {
 	return nil
 }
 
-// GenerateKey generates a cache key based on content
+// GenerateKey generates a secure cache key using SHA256 hash
+// This prevents sensitive content from appearing in Redis keys
 func (c *Cache) GenerateKey(prefix string, content string) string {
-	// In production, consider using hash for security
-	return fmt.Sprintf("%s:%s", prefix, content)
+	hash := sha256.Sum256([]byte(content))
+	return fmt.Sprintf("%s:%s", prefix, hex.EncodeToString(hash[:]))
 }

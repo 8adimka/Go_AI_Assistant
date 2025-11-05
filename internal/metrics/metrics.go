@@ -21,7 +21,7 @@ type Metrics struct {
 // NewMetrics creates and initializes all metrics
 func NewMetrics(meter metric.Meter) (*Metrics, error) {
 	httpRequestsTotal, err := meter.Int64Counter(
-		"http_requests_total",
+		"http_server_requests_total",
 		metric.WithDescription("Total number of HTTP requests"),
 		metric.WithUnit("1"),
 	)
@@ -30,16 +30,16 @@ func NewMetrics(meter metric.Meter) (*Metrics, error) {
 	}
 
 	httpRequestDuration, err := meter.Float64Histogram(
-		"http_request_duration_seconds",
-		metric.WithDescription("HTTP request duration in seconds"),
-		metric.WithUnit("s"),
+		"http_server_latency_ms",
+		metric.WithDescription("HTTP request latency in milliseconds"),
+		metric.WithUnit("ms"),
 	)
 	if err != nil {
 		return nil, err
 	}
 
 	httpRequestsInFlight, err := meter.Int64UpDownCounter(
-		"http_requests_in_progress",
+		"http_server_requests_in_progress",
 		metric.WithDescription("Number of HTTP requests currently in progress"),
 		metric.WithUnit("1"),
 	)
@@ -80,22 +80,22 @@ func (m *Metrics) HTTPMetricsMiddleware() func(http.Handler) http.Handler {
 			next.ServeHTTP(rw, r)
 
 			// Record metrics
-			duration := time.Since(start).Seconds()
+			durationMs := float64(time.Since(start).Nanoseconds()) / 1e6 // Convert to milliseconds
 			statusCode := strconv.Itoa(rw.statusCode)
 
 			m.httpRequestsTotal.Add(r.Context(), 1,
 				metric.WithAttributes(
 					attribute.String("method", r.Method),
 					attribute.String("path", r.URL.Path),
-					attribute.String("status", statusCode),
+					attribute.String("status_code", statusCode),
 				),
 			)
 
-			m.httpRequestDuration.Record(r.Context(), duration,
+			m.httpRequestDuration.Record(r.Context(), durationMs,
 				metric.WithAttributes(
 					attribute.String("method", r.Method),
 					attribute.String("path", r.URL.Path),
-					attribute.String("status", statusCode),
+					attribute.String("status_code", statusCode),
 				),
 			)
 

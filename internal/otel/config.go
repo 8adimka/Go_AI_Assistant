@@ -6,9 +6,11 @@ import (
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/exporters/prometheus"
-	"go.opentelemetry.io/otel/sdk/metric"
+	"go.opentelemetry.io/otel/metric"
+	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/resource"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	"go.opentelemetry.io/otel/trace"
 	semconv "go.opentelemetry.io/otel/semconv/v1.26.0"
 )
 
@@ -32,9 +34,9 @@ func InitOpenTelemetry(ctx context.Context, serviceName string) (func(context.Co
 		return nil, err
 	}
 
-	meterProvider := metric.NewMeterProvider(
-		metric.WithResource(res),
-		metric.WithReader(metricExporter),
+	meterProvider := sdkmetric.NewMeterProvider(
+		sdkmetric.WithResource(res),
+		sdkmetric.WithReader(metricExporter),
 	)
 	otel.SetMeterProvider(meterProvider)
 
@@ -70,11 +72,11 @@ func InitOpenTelemetry(ctx context.Context, serviceName string) (func(context.Co
 }
 
 // GetTracer returns a tracer for the service
-func GetTracer() interface{} {
+func GetTracer() trace.Tracer {
 	return otel.Tracer("github.com/8adimka/Go_AI_Assistant")
 }
 
 // GetMeter returns a meter for the service
-func GetMeter() interface{} {
+func GetMeter() metric.Meter {
 	return otel.Meter("github.com/8adimka/Go_AI_Assistant")
 }

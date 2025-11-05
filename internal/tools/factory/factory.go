@@ -2,6 +2,7 @@ package factory
 
 import (
 	"log/slog"
+	"time"
 
 	"github.com/8adimka/Go_AI_Assistant/internal/config"
 	"github.com/8adimka/Go_AI_Assistant/internal/redisx"
@@ -32,7 +33,7 @@ func (f *Factory) CreateAllTools() *registry.ToolRegistry {
 
 	// Create Redis cache for weather service
 	redisClient := redisx.MustConnect(f.config.RedisAddr)
-	cache := redisx.NewCache(redisClient, 24) // 24 hours cache
+	cache := redisx.NewCache(redisClient, 24*time.Hour) // 24 hours cache
 
 	// Create weather service with fallback
 	weatherService := weather.CreateWeatherService(f.config.WeatherApiKey, cache)

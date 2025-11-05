@@ -31,3 +31,31 @@ up:
 
 down:
 	docker compose down
+
+# Database migration commands
+migrate-up:
+	@echo "Running migrations..."
+	@mongosh $${MONGO_URI:-mongodb://acai:travel@localhost:27017/acai} --file migrations/000001_init.up.js
+
+migrate-down:
+	@echo "Rolling back migrations..."
+	@mongosh $${MONGO_URI:-mongodb://acai:travel@localhost:27017/acai} --file migrations/000001_init.down.js
+
+migrate-status:
+	@echo "Checking indexes..."
+	@mongosh $${MONGO_URI:-mongodb://acai:travel@localhost:27017/acai} --eval "db.conversations.getIndexes(); db.messages.getIndexes();"
+
+# Database backup and restore
+backup:
+	@echo "Creating backup..."
+	@mkdir -p backups
+	@mongodump --uri="$${MONGO_URI:-mongodb://acai:travel@localhost:27017}" --db=acai --out=backups/backup-$$(date +%Y%m%d-%H%M%S)
+
+restore:
+	@echo "Restoring from backup..."
+	@mongorestore --uri="$${MONGO_URI:-mongodb://acai:travel@localhost:27017}" --db=acai $(BACKUP_PATH)
+
+# Smoke test
+smoke:
+	@chmod +x scripts/smoke-test.sh
+	@./scripts/smoke-test.sh

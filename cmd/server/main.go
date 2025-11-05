@@ -16,10 +16,13 @@ import (
 	"github.com/8adimka/Go_AI_Assistant/internal/config"
 	"github.com/8adimka/Go_AI_Assistant/internal/health"
 	"github.com/8adimka/Go_AI_Assistant/internal/httpx"
+	"github.com/8adimka/Go_AI_Assistant/internal/metrics"
 	"github.com/8adimka/Go_AI_Assistant/internal/mongox"
 	"github.com/8adimka/Go_AI_Assistant/internal/otel"
 	"github.com/8adimka/Go_AI_Assistant/internal/pb"
+	"github.com/8adimka/Go_AI_Assistant/internal/redisx"
 	"github.com/gorilla/mux"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/twitchtv/twirp"
 )
 
@@ -43,13 +46,16 @@ func main() {
 	// Connect to MongoDB
 	mongo := mongox.MustConnect(cfg.MongoURI, "acai")
 
-	// Initialize metrics - temporarily disabled due to type issues
-	// meter := otel.GetMeter()
-	// appMetrics, err := metrics.NewMetrics(meter)
-	// if err != nil {
-	// 	slog.Error("Failed to initialize metrics", "error", err)
-	// 	os.Exit(1)
-	// }
+	// Connect to Redis
+	redisClient := redisx.MustConnect(cfg.RedisAddr)
+
+	// Initialize metrics
+	meter := otel.GetMeter()
+	appMetrics, err := metrics.NewMetrics(meter)
+	if err != nil {
+		slog.Error("Failed to initialize metrics", "error", err)
+		os.Exit(1)
+	}
 
 	repo := model.New(mongo)
 	assist := assistant.New()
@@ -59,18 +65,19 @@ func main() {
 	// Configure handler
 	handler := mux.NewRouter()
 	handler.Use(
+		appMetrics.HTTPMetricsMiddleware(),
 		httpx.OTelMiddleware(),
 		httpx.Logger(),
 		httpx.Recovery(),
 	)
 
 	// Health checks
-	healthChecker := health.NewHealthChecker(mongo.Client())
+	healthChecker := health.NewHealthChecker(mongo.Client(), redisClient)
 	handler.HandleFunc("/health", healthChecker.HealthHandler)
 	handler.HandleFunc("/ready", healthChecker.ReadyHandler)
 
-	// Metrics endpoint
-	handler.Handle("/metrics", http.DefaultServeMux)
+	// Metrics endpoint - Prometheus metrics
+	handler.Handle("/metrics", promhttp.Handler())
 
 	handler.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		_, _ = fmt.Fprint(w, "Hi, my name is Clippy!")

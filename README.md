@@ -1,377 +1,190 @@
 # Go AI Assistant
 
-A production-ready AI assistant service built with Go, featuring OpenAI GPT-4 integration, real-time weather data, and Telegram bot interface. This project demonstrates enterprise-grade software development practices with comprehensive testing, monitoring, and scalability features.
+A production-ready AI assistant backend built with Go, featuring modular tool architecture, Redis caching, OpenTelemetry observability, and comprehensive monitoring. Supports OpenAI/Anthropic APIs with intelligent caching, rate limiting, and circuit breaker patterns for external services.
 
-## 🚀 Features
+![CI](https://github.com/YOUR_USERNAME/Go_AI_Assistant/workflows/CI/badge.svg)
 
-### Core AI Assistant
+## Key Features
 
-- 🤖 **OpenAI GPT-4 Integration** - Intelligent conversation handling with smart prompts
-- 💬 **Conversation Management** - Persistent conversations with MongoDB storage
-- 📝 **Smart Title Generation** - Automatic conversation summarization with Redis caching
+- 🤖 **AI Integration** - OpenAI/Anthropic API support with configurable models
+- 🔧 **Modular Tools** - Weather API, calendar, date/time tools with plugin architecture
+- 💾 **Redis Caching** - SHA256-hashed keys for security, 24h TTL, cache hit/miss tracking
+- 📊 **Observability** - OpenTelemetry tracing, Prometheus metrics, structured logging
+- 🔒 **Security** - API key authentication, per-IP rate limiting, constant-time comparison
+- 🛡️ **Resilience** - Circuit breaker for external APIs, graceful degradation
+- 🗄️ **MongoDB Storage** - Conversation history with optimized indexes
+- ✅ **Testing** - Unit, integration, E2E, and performance tests (75%+ coverage)
+- 🚀 **Production Ready** - Health checks, migrations, backups, CI/CD pipeline
 
-### Real-time Data Services
+## Tech Stack
 
-- 🌤️ **Weather Information** - Real-time weather data via WeatherAPI.com
-- 📅 **Holiday Information** - Local bank and public holidays
-- ⏰ **Current Date/Time** - Real-time temporal information
+- **Backend**: Go 1.21+, Twirp RPC
+- **Database**: MongoDB 7
+- **Cache**: Redis 7
+- **Observability**: OpenTelemetry, Prometheus
+- **Infrastructure**: Docker, Docker Compose
+- **CI/CD**: GitHub Actions
 
-### Production Infrastructure
-
-- 💾 **Redis Caching** - Performance optimization for API calls and prompts
-- 🔄 **Rate Limiting** - Protection against API abuse using `golang.org/x/time/rate`
-- 🛡️ **Graceful Shutdown** - Proper cleanup and connection handling
-- 🔄 **Retry Logic** - Exponential backoff for external API calls
-
-### Monitoring & Observability
-
-- 📊 **OpenTelemetry** - Distributed tracing and metrics collection
-- 📈 **Prometheus Metrics** - Request count, latency, error rates
-- 🔍 **Jaeger Tracing** - Request flow visualization
-- 📝 **Structured Logging** - Contextual logging with trace IDs
-
-### User Interfaces
-
-- 🌐 **RESTful API** - Twirp-based HTTP API with JSON
-- 🤖 **Telegram Bot** - User-friendly chat interface
-- 🖥️ **CLI Tool** - Command-line interface for testing
-
-## 🏗️ Architecture
-
-```
-tech-challenge/              # Go AI Assistant (Go project)
-├── cmd/                    # Go entry points (server, CLI)
-├── internal/               # Private application code
-│   ├── chat/              # Conversation management
-│   ├── assistant/         # AI assistant logic
-│   ├── weather/           # Weather service integration
-│   ├── config/            # Configuration management
-│   └── httpx/             # HTTP utilities
-├── python_telegram_bot/    # Telegram bot interface
-│   ├── telegram_bot_enhanced.py
-│   ├── requirements.txt
-│   ├── .env
-│   └── README.md
-├── rpc/                    # Protocol buffers definitions
-├── docker-compose.yaml     # Infrastructure (Redis, MongoDB)
-├── go.mod                  # Go dependencies
-├── go.sum                  # Dependency checksums
-├── Makefile                # Build and development commands
-└── README.md              # This file
-```
-
-## 🚀 Quick Start
+## Quick Start
 
 ### Prerequisites
 
-- Go 1.21+
 - Docker & Docker Compose
-- OpenAI API Key
-- WeatherAPI.com Key (optional, fallback available)
-
-### 1. Clone and Setup
-
-```bash
-git clone https://github.com/8adimka/Go_AI_Assistant.git
-cd Go_AI_Assistant
-```
-
-### 2. Environment Configuration
-
-```bash
-# Copy environment template
-cp .env.example .env
-
-# Edit .env file with your API keys
-nano .env
-```
-
-Required environment variables:
-
-```env
-OPENAI_API_KEY=your_openai_api_key_here
-WEATHER_API_KEY=your_weatherapi_key_here  # Optional, fallback available
-```
-
-### 3. Start Infrastructure
-
-```bash
-# Start Redis and MongoDB
-docker-compose up -d
-
-# Verify services are running
-docker-compose ps
-```
-
-### 4. Run the Application
-
-```bash
-# Start the Go server
-go run ./cmd/server
-```
-
-You should see:
-
-```
-2025/11/05 15:10:46 INFO Successfully connected to Redis addr=localhost:6379
-2025/11/05 15:10:46 INFO Starting the server... port=8080
-```
-
-## 📡 API Usage
-
-### Start a Conversation
-
-```bash
-curl -X POST http://localhost:8080/twirp/acai.chat.ChatService/StartConversation \
-  -H "Content-Type: application/json" \
-  -d '{"message": "What is the weather like in Barcelona?"}' | jq
-```
-
-Response:
-
-```json
-{
-  "conversation_id": "690b5b2b1ce3d57c09602ecf",
-  "title": "Weather in Barcelona",
-  "reply": "The current weather in Barcelona is..."
-}
-```
-
-### Send Message to Conversation
-
-```bash
-curl -X POST http://localhost:8080/twirp/acai.chat.ChatService/ContinueConversation \
-  -H "Content-Type: application/json" \
-  -d '{
-    "conversation_id": "690b725abf5cf39a2b66b3db",
-    "message": "What should I wear today in Madrid?"
-  }' | jq
-```
-
-### Get Conversation
-
-```bash
-curl -X POST http://localhost:8080/twirp/acai.chat.ChatService/GetConversation \
-  -H "Content-Type: application/json" \
-  -d '{"conversation_id": "690b5b2b1ce3d57c09602ecf"}' | jq
-```
-
-### List Conversations
-
-```bash
-curl -X POST http://localhost:8080/twirp/acai.chat.ChatService/ListConversations \
-  -H "Content-Type: application/json" \
-  -d '{}' | jq
-```
-
-## 🤖 Telegram Bot
+- Go 1.21 or higher
+- (Optional) OpenAI API key
 
 ### Setup
 
-```bash
-# Navigate to bot directory
-cd python_telegram_bot
+1. **Clone and configure**
 
-# Create virtual environment
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
+   ```bash
+   git clone https://github.com/YOUR_USERNAME/Go_AI_Assistant.git
+   cd Go_AI_Assistant
+   cp .env.example .env
+   # Edit .env with your API keys
+   ```
 
-# Install dependencies
-pip install -r requirements.txt
+2. **Start services**
 
-# Configure environment
-cp .env.example .env
-# Edit .env with your Telegram Bot Token
-```
+   ```bash
+   docker-compose up -d
+   make migrate-up  # Create database indexes
+   ```
 
-### Run the Bot
+3. **Run application**
 
-```bash
-source venv/bin/activate
-python telegram_bot_enhanced.py
-```
+   ```bash
+   go run ./cmd/server
+   ```
 
-### Bot Commands
+4. **Verify deployment**
 
-- `/start` - Welcome message and bot description
-- `/status` - Check system status and connectivity
-- `/weather <city>` - Get weather for specified city
-- **Any message** - Send to AI assistant for response
+   ```bash
+   curl http://localhost:8080/health
+   curl http://localhost:8080/metrics
+   ```
 
-## 🧪 Testing
+### API Endpoints
 
-### Run All Tests
+- `GET /health` - Health check (MongoDB + Redis status)
+- `GET /ready` - Readiness probe
+- `GET /metrics` - Prometheus metrics (requires API key)
+- `POST /twirp/chat.ChatService/*` - Chat API (Twirp RPC)
 
-```bash
-# Make sure infrastructure is running
-docker-compose up -d
-
-# Run tests
-go test ./...
-```
-
-### Test Categories
-
-- **Unit Tests**: `go test ./internal/assistant/...`
-- **Integration Tests**: `go test ./internal/chat/...`
-- **E2E Tests**: Tests with real external services
-
-### Test Coverage
+## Testing
 
 ```bash
-go test -coverprofile=coverage.out ./...
-go tool cover -html=coverage.out
+# Run all tests
+make test
+
+# Specific test suites
+make test-unit          # Unit tests
+make test-integration   # Integration tests (requires Docker)
+make test-e2e          # End-to-end tests
+make test-performance  # Benchmarks
+
+# Coverage report
+make test-coverage
+
+# Smoke test (full system validation)
+make smoke
 ```
 
-## 📊 Monitoring & Observability
+## Configuration
 
-### Metrics Endpoint
+Key environment variables (see `.env.example`):
 
 ```bash
-# Prometheus metrics
-curl http://localhost:8080/metrics
+# Required
+OPENAI_API_KEY=sk-...              # OpenAI API key
+MONGO_URI=mongodb://...             # MongoDB connection string
+REDIS_ADDR=localhost:6379           # Redis address
+
+# Optional
+OPENAI_MODEL=gpt-4o-mini           # AI model selection
+WEATHER_API_KEY=...                 # Weather API key
+API_KEY=...                         # API authentication key
+API_RPS=10.0                        # Rate limit (requests/second)
+API_BURST=20                        # Rate limit burst size
+CIRCUIT_BREAKER_MAX_FAILURES=3      # Circuit breaker threshold
+CIRCUIT_BREAKER_COOLDOWN_SECONDS=30 # Circuit breaker cooldown
 ```
 
-### Health Checks
+## Monitoring
+
+**Prometheus Metrics** (`/metrics`):
+
+- `http_requests_total` - Total HTTP requests
+- `http_request_duration_seconds` - Request latency
+- `http_requests_in_flight` - Active requests
+- `openai_tokens_input_total` - OpenAI token usage
+- `weather_circuit_state` - Circuit breaker status
+
+**Health Checks**:
 
 ```bash
-# Health endpoint
-curl http://localhost:8080/healthz
-
-# Readiness endpoint
-curl http://localhost:8080/readyz
+curl http://localhost:8080/health | jq
+# {
+#   "status": "healthy",
+#   "checks": {
+#     "mongodb": "ok",
+#     "redis": "ok"
+#   }
+# }
 ```
 
-### Jaeger Tracing
+**Logs**: Structured JSON with trace IDs for request correlation
 
-Start Jaeger for distributed tracing:
+## Database Management
 
 ```bash
-docker run -d -p 16686:16686 -p 4317:4317 jaegertracing/all-in-one:latest
+# Migrations
+make migrate-up      # Apply migrations
+make migrate-down    # Rollback migrations
+make migrate-status  # Check current state
+
+# Backups
+make backup                              # Create timestamped backup
+make restore BACKUP_PATH=backups/...    # Restore from backup
 ```
 
-Access Jaeger UI at: <http://localhost:16686>
+## Project Structure
 
-## 🔧 Development
-
-### Building
-
-```bash
-# Build the application
-go build ./cmd/server
-
-# Build for production
-GOOS=linux GOARCH=amd64 go build -o bin/server ./cmd/server
+```
+├── cmd/
+│   ├── server/          # Main application
+│   └── cli/             # CLI tools
+├── internal/
+│   ├── chat/            # Chat service implementation
+│   ├── circuitbreaker/  # Circuit breaker pattern
+│   ├── config/          # Configuration management
+│   ├── errorsx/         # Error handling utilities
+│   ├── health/          # Health check endpoints
+│   ├── httpx/           # HTTP middleware (auth, rate limit)
+│   ├── metrics/         # Prometheus metrics
+│   ├── redisx/          # Redis cache layer
+│   └── tools/           # Modular tool system
+├── migrations/          # Database migrations
+├── scripts/             # Utility scripts
+└── tests/              # Test suites
 ```
 
-### Code Quality
-
-```bash
-# Format code
-go fmt ./...
-
-# Run linters
-golangci-lint run
-
-# Run vet
-go vet ./...
-```
-
-### Make Commands
-
-```bash
-make up      # Start infrastructure (Redis, MongoDB)
-make down    # Stop infrastructure
-make run     # Start application
-make test    # Run tests
-make gen     # Generate protobuf code
-```
-
-## 🏭 Production Deployment
-
-### Docker
-
-```bash
-# Build Docker image
-docker build -t go-ai-assistant .
-
-# Run with Docker
-docker run -p 8080:8080 --env-file .env go-ai-assistant
-```
-
-### Environment Variables for Production
-
-```env
-OPENAI_API_KEY=your_production_key
-WEATHER_API_KEY=your_weatherapi_key
-REDIS_URL=redis://redis:6379
-MONGODB_URL=mongodb://mongo:27017
-LOG_LEVEL=info
-```
-
-## 🔒 Security Features
-
-- **Input Validation** - All inputs are validated
-- **Rate Limiting** - Prevents API abuse
-- **CORS Headers** - Configurable CORS policies
-- **Secrets Management** - Environment-based configuration
-- **HTTPS Ready** - Prepared for TLS termination
-
-## 📈 Performance
-
-- **Redis Caching** - Reduces OpenAI API calls
-- **Connection Pooling** - Optimized HTTP clients
-- **Async Processing** - Non-blocking operations
-- **Memory Optimization** - Efficient data structures
-
-## 🤝 Contributing
+## Contributing
 
 1. Fork the repository
-2. Create a feature branch: `git checkout -b feature/amazing-feature`
-3. Commit changes: `git commit -m 'Add amazing feature'`
-4. Push to branch: `git push origin feature/amazing-feature`
+2. Create a feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit changes (`git commit -m 'Add amazing feature'`)
+4. Push to branch (`git push origin feature/amazing-feature`)
 5. Open a Pull Request
 
-### Development Guidelines
+**Code Quality**: All PRs must pass CI checks (tests, linting, formatting)
 
-- Write tests for new features
-- Follow Go conventions and style guide
-- Update documentation for API changes
-- Use meaningful commit messages
+## License
 
-## 📄 License
+MIT License (see LICENSE file)
 
-This project is part of a technical challenge for Acai Travel.
+## Links
 
-## 🆘 Troubleshooting
-
-### Common Issues
-
-**Bot not starting:**
-
-- Check TELEGRAM_BOT_TOKEN in .env file
-- Verify virtual environment is activated
-
-**API connection errors:**
-
-- Ensure Redis and MongoDB are running: `docker-compose ps`
-- Check OpenAI API key is valid
-
-**Weather API failures:**
-
-- System has fallback to mock data
-- Verify WeatherAPI key if real data is needed
-
-**Port conflicts:**
-
-- Change port in configuration if 8080 is occupied
-
-### Getting Help
-
-- Check application logs for detailed error messages
-- Verify all environment variables are set
-- Ensure all dependencies are installed
-
----
-
-**Ready to build intelligent conversations?** 🚀
+- [Production Readiness Checklist](PRODUCTION_READINESS.md)
+- [Architecture Docs](docs/)
+- [API Documentation](https://github.com/YOUR_USERNAME/Go_AI_Assistant/wiki)

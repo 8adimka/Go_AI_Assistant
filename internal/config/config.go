@@ -10,13 +10,14 @@ import (
 
 // Config holds all configuration parameters
 type Config struct {
-	OpenAIApiKey      string
-	WeatherApiKey     string
+	OpenAIApiKey        string
+	OpenAIModel         string
+	WeatherApiKey       string
 	HolidayCalendarLink string
-	RedisAddr         string
-	MongoURI          string
-	TelegramBotToken  string
-	TelegramChatID    string
+	RedisAddr           string
+	MongoURI            string
+	TelegramBotToken    string
+	TelegramChatID      string
 }
 
 // Load loads configuration from environment variables and .env file
@@ -27,13 +28,14 @@ func Load() *Config {
 	}
 
 	config := &Config{
-		OpenAIApiKey:      getEnv("OPENAI_API_KEY", ""),
-		WeatherApiKey:     getEnv("WEATHER_API_KEY", ""),
+		OpenAIApiKey:        getEnv("OPENAI_API_KEY", ""),
+		OpenAIModel:         getEnv("OPENAI_MODEL", "gpt-4o-mini"),
+		WeatherApiKey:       getEnv("WEATHER_API_KEY", ""),
 		HolidayCalendarLink: getEnv("HOLIDAY_CALENDAR_LINK", "https://www.officeholidays.com/ics/spain/catalonia"),
-		RedisAddr:         getEnv("REDIS_ADDR", "localhost:6379"),
-		MongoURI:          getEnv("MONGO_URI", "mongodb://acai:travel@localhost:27017"),
-		TelegramBotToken:  getEnv("TELEGRAM_BOT_TOKEN", ""),
-		TelegramChatID:    getEnv("TELEGRAM_CHAT_ID", ""),
+		RedisAddr:           getEnv("REDIS_ADDR", "localhost:6379"),
+		MongoURI:            getEnv("MONGO_URI", "mongodb://acai:travel@localhost:27017"),
+		TelegramBotToken:    getEnv("TELEGRAM_BOT_TOKEN", ""),
+		TelegramChatID:      getEnv("TELEGRAM_CHAT_ID", ""),
 	}
 
 	// Validate required configuration
