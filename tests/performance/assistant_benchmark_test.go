@@ -6,20 +6,13 @@ import (
 
 	"github.com/8adimka/Go_AI_Assistant/internal/chat/assistant"
 	"github.com/8adimka/Go_AI_Assistant/internal/chat/model"
-	"github.com/8adimka/Go_AI_Assistant/tests/unit/mocks"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 
 // BenchmarkAssistant_Reply benchmarks the Reply method performance
 func BenchmarkAssistant_Reply(b *testing.B) {
-	// Create mock OpenAI client
-	mockClient := mocks.NewMockOpenAIClient()
-	
-	// Create assistant with mock client
-	assist := &assistant.Assistant{
-		// We need to set the internal fields, but they're private
-		// This benchmark will need to be updated when we can properly inject dependencies
-	}
+	// Create assistant
+	assist := &assistant.Assistant{}
 
 	// Create test conversation
 	conv := &model.Conversation{
