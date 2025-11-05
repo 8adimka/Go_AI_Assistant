@@ -10,16 +10,24 @@ import (
 	"time"
 
 	"github.com/acai-travel/tech-challenge/internal/chat/model"
+	"github.com/acai-travel/tech-challenge/internal/redisx"
 	ics "github.com/arran4/golang-ical"
 	"github.com/openai/openai-go/v2"
 )
 
 type Assistant struct {
-	cli openai.Client
+	cli   openai.Client
+	cache *redisx.Cache
 }
 
 func New() *Assistant {
-	return &Assistant{cli: openai.NewClient()}
+	redisClient := redisx.MustConnect()
+	cache := redisx.NewCache(redisClient, 24*time.Hour) // Кэш на 24 часа
+	
+	return &Assistant{
+		cli:   openai.NewClient(),
+		cache: cache,
+	}
 }
 
 func (a *Assistant) Title(ctx context.Context, conv *model.Conversation) (string, error) {
@@ -29,16 +37,44 @@ func (a *Assistant) Title(ctx context.Context, conv *model.Conversation) (string
 
 	slog.InfoContext(ctx, "Generating title for conversation", "conversation_id", conv.ID)
 
-	msgs := make([]openai.ChatCompletionMessageParamUnion, len(conv.Messages))
+	// Пытаемся получить из кэша
+	userMessage := conv.Messages[0].Content
+	cacheKey := a.cache.GenerateKey("title", userMessage)
+	
+	var cachedTitle string
+	if err := a.cache.Get(ctx, cacheKey, &cachedTitle); err == nil {
+		slog.InfoContext(ctx, "Title retrieved from cache", "conversation_id", conv.ID)
+		return cachedTitle, nil
+	} else if !errors.Is(err, redisx.ErrCacheMiss) {
+		slog.WarnContext(ctx, "Cache error, proceeding without cache", "error", err)
+	}
 
-	msgs[0] = openai.AssistantMessage("Generate a concise, descriptive title for the conversation based on the user message. The title should be a single line, no more than 80 characters, and should not include any special characters or emojis.")
-	for i, m := range conv.Messages {
-		msgs[i] = openai.UserMessage(m.Content)
+	// Улучшенный промпт для генерации заголовков
+	titlePrompt := `Generate a very concise and descriptive title for this conversation. 
+The title should:
+- Be 3-7 words maximum
+- Focus on the main topic or question
+- Be in title case (capitalize main words)
+- Avoid answering the question, just describe the topic
+- No special characters, emojis, or punctuation at the end
+- Maximum 60 characters
+
+Examples:
+- User: "What's the weather in Barcelona?" → "Weather in Barcelona"
+- User: "Tell me about machine learning" → "Machine Learning Overview"
+- User: "How to cook pasta carbonara" → "Pasta Carbonara Recipe"
+
+Generate title for:`
+
+	msgs := []openai.ChatCompletionMessageParamUnion{
+		openai.SystemMessage(titlePrompt),
+		openai.UserMessage(userMessage),
 	}
 
 	resp, err := a.cli.Chat.Completions.New(ctx, openai.ChatCompletionNewParams{
-		Model:    openai.ChatModelO1,
+		Model:    openai.ChatModelGPT4Turbo, // Более быстрая модель для заголовков
 		Messages: msgs,
+		MaxTokens: openai.Int(30), // Ограничиваем токены для краткости
 	})
 
 	if err != nil {
@@ -50,14 +86,57 @@ func (a *Assistant) Title(ctx context.Context, conv *model.Conversation) (string
 	}
 
 	title := resp.Choices[0].Message.Content
-	title = strings.ReplaceAll(title, "\n", " ")
-	title = strings.Trim(title, " \t\r\n-\"'")
+	title = a.formatTitle(title)
 
-	if len(title) > 80 {
-		title = title[:80]
+	// Сохраняем в кэш
+	if err := a.cache.Set(ctx, cacheKey, title); err != nil {
+		slog.WarnContext(ctx, "Failed to cache title", "error", err)
 	}
 
 	return title, nil
+}
+
+// formatTitle форматирует и валидирует заголовок
+func (a *Assistant) formatTitle(title string) string {
+	// Убираем лишние пробелы и переносы строк
+	title = strings.TrimSpace(title)
+	title = strings.ReplaceAll(title, "\n", " ")
+	
+	// Убираем кавычки и другие специальные символы
+	title = strings.Trim(title, " \"'`-")
+	
+	// Ограничиваем длину
+	if len(title) > 60 {
+		title = title[:60]
+	}
+	
+	// Приводим к Title Case
+	title = a.toTitleCase(title)
+	
+	return title
+}
+
+// toTitleCase преобразует строку в Title Case
+func (a *Assistant) toTitleCase(s string) string {
+	words := strings.Fields(s)
+	for i, word := range words {
+		if len(word) > 0 {
+			// Все слова кроме коротких союзов и предлогов получают заглавную букву
+			shortWords := map[string]bool{
+				"a": true, "an": true, "the": true, "and": true, "but": true, "or": true,
+				"for": true, "nor": true, "on": true, "at": true, "to": true, "by": true,
+				"in": true, "of": true, "with": true,
+			}
+			
+			// Первое слово всегда с заглавной буквы
+			if i == 0 || !shortWords[strings.ToLower(word)] {
+				words[i] = strings.ToUpper(word[:1]) + strings.ToLower(word[1:])
+			} else {
+				words[i] = strings.ToLower(word)
+			}
+		}
+	}
+	return strings.Join(words, " ")
 }
 
 func (a *Assistant) Reply(ctx context.Context, conv *model.Conversation) (string, error) {
