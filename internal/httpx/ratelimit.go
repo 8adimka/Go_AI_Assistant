@@ -45,10 +45,10 @@ func (rl *RateLimiter) Middleware() func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			// Get client IP (handle X-Forwarded-For and X-Real-IP)
-			ip := getClientIP(r)
-			
+			ip := GetClientIP(r)
+
 			limiter := rl.getLimiter(ip)
-			
+
 			if !limiter.Allow() {
 				slog.WarnContext(r.Context(), "Rate limit exceeded",
 					"ip", ip,
@@ -56,7 +56,7 @@ func (rl *RateLimiter) Middleware() func(http.Handler) http.Handler {
 					"path", r.URL.Path,
 					"user_agent", r.UserAgent(),
 				)
-				
+
 				w.Header().Set("Content-Type", "application/json")
 				w.Header().Set("X-RateLimit-Limit", fmt.Sprintf("%.0f", rl.rps))
 				w.Header().Set("Retry-After", "1")
@@ -64,14 +64,14 @@ func (rl *RateLimiter) Middleware() func(http.Handler) http.Handler {
 				w.Write([]byte(`{"error":"rate limit exceeded","message":"too many requests, please try again later"}`))
 				return
 			}
-			
+
 			next.ServeHTTP(w, r)
 		})
 	}
 }
 
-// getClientIP extracts the client IP from the request
-func getClientIP(r *http.Request) string {
+// GetClientIP extracts the client IP from the request
+func GetClientIP(r *http.Request) string {
 	// Check X-Forwarded-For header first (for proxies)
 	xff := r.Header.Get("X-Forwarded-For")
 	if xff != "" {
@@ -83,12 +83,12 @@ func getClientIP(r *http.Request) string {
 		}
 		return xff
 	}
-	
+
 	// Check X-Real-IP header
 	if xri := r.Header.Get("X-Real-IP"); xri != "" {
 		return xri
 	}
-	
+
 	// Fall back to RemoteAddr
 	return r.RemoteAddr
 }

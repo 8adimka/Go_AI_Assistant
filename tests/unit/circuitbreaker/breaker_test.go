@@ -1,19 +1,21 @@
-package circuitbreaker
+package circuitbreaker_test
 
 import (
 	"errors"
 	"testing"
 	"time"
+
+	"github.com/8adimka/Go_AI_Assistant/internal/circuitbreaker"
 )
 
 func TestCircuitBreaker_ClosedState(t *testing.T) {
-	cb := NewCircuitBreaker(Config{
+	cb := circuitbreaker.NewCircuitBreaker(circuitbreaker.Config{
 		MaxFailures:    3,
 		CooldownPeriod: 100 * time.Millisecond,
 	})
 
 	// Circuit should start closed
-	if cb.GetState() != StateClosed {
+	if cb.GetState() != circuitbreaker.StateClosed {
 		t.Errorf("Expected state Closed, got %v", cb.GetState())
 	}
 
@@ -25,13 +27,13 @@ func TestCircuitBreaker_ClosedState(t *testing.T) {
 		t.Errorf("Unexpected error: %v", err)
 	}
 
-	if cb.GetState() != StateClosed {
+	if cb.GetState() != circuitbreaker.StateClosed {
 		t.Errorf("Expected state Closed after success, got %v", cb.GetState())
 	}
 }
 
 func TestCircuitBreaker_OpenAfterFailures(t *testing.T) {
-	cb := NewCircuitBreaker(Config{
+	cb := circuitbreaker.NewCircuitBreaker(circuitbreaker.Config{
 		MaxFailures:    3,
 		CooldownPeriod: 100 * time.Millisecond,
 	})
@@ -46,7 +48,7 @@ func TestCircuitBreaker_OpenAfterFailures(t *testing.T) {
 		if err != testErr {
 			t.Errorf("Expected test error, got %v", err)
 		}
-		if cb.GetState() != StateClosed {
+		if cb.GetState() != circuitbreaker.StateClosed {
 			t.Errorf("Expected state Closed after %d failures, got %v", i+1, cb.GetState())
 		}
 	}
@@ -59,13 +61,13 @@ func TestCircuitBreaker_OpenAfterFailures(t *testing.T) {
 		t.Errorf("Expected test error, got %v", err)
 	}
 
-	if cb.GetState() != StateOpen {
+	if cb.GetState() != circuitbreaker.StateOpen {
 		t.Errorf("Expected state Open after 3 failures, got %v", cb.GetState())
 	}
 }
 
 func TestCircuitBreaker_RejectsWhenOpen(t *testing.T) {
-	cb := NewCircuitBreaker(Config{
+	cb := circuitbreaker.NewCircuitBreaker(circuitbreaker.Config{
 		MaxFailures:    3,
 		CooldownPeriod: 100 * time.Millisecond,
 	})
@@ -77,7 +79,7 @@ func TestCircuitBreaker_RejectsWhenOpen(t *testing.T) {
 	}
 
 	// Circuit should be open
-	if cb.GetState() != StateOpen {
+	if cb.GetState() != circuitbreaker.StateOpen {
 		t.Fatalf("Expected state Open, got %v", cb.GetState())
 	}
 
@@ -87,13 +89,13 @@ func TestCircuitBreaker_RejectsWhenOpen(t *testing.T) {
 		return nil
 	})
 
-	if err != ErrCircuitOpen {
+	if err != circuitbreaker.ErrCircuitOpen {
 		t.Errorf("Expected ErrCircuitOpen, got %v", err)
 	}
 }
 
 func TestCircuitBreaker_HalfOpenAfterCooldown(t *testing.T) {
-	cb := NewCircuitBreaker(Config{
+	cb := circuitbreaker.NewCircuitBreaker(circuitbreaker.Config{
 		MaxFailures:    3,
 		CooldownPeriod: 50 * time.Millisecond,
 	})
@@ -104,7 +106,7 @@ func TestCircuitBreaker_HalfOpenAfterCooldown(t *testing.T) {
 		cb.Execute(func() error { return testErr })
 	}
 
-	if cb.GetState() != StateOpen {
+	if cb.GetState() != circuitbreaker.StateOpen {
 		t.Fatalf("Expected state Open, got %v", cb.GetState())
 	}
 
@@ -127,13 +129,13 @@ func TestCircuitBreaker_HalfOpenAfterCooldown(t *testing.T) {
 	}
 
 	// After successful execution in half-open, should transition to closed
-	if cb.GetState() != StateClosed {
+	if cb.GetState() != circuitbreaker.StateClosed {
 		t.Errorf("Expected state Closed after successful half-open attempt, got %v", cb.GetState())
 	}
 }
 
 func TestCircuitBreaker_FailureInHalfOpenReopens(t *testing.T) {
-	cb := NewCircuitBreaker(Config{
+	cb := circuitbreaker.NewCircuitBreaker(circuitbreaker.Config{
 		MaxFailures:    3,
 		CooldownPeriod: 50 * time.Millisecond,
 	})
@@ -157,13 +159,13 @@ func TestCircuitBreaker_FailureInHalfOpenReopens(t *testing.T) {
 	}
 
 	// Circuit should be open again
-	if cb.GetState() != StateOpen {
+	if cb.GetState() != circuitbreaker.StateOpen {
 		t.Errorf("Expected state Open after failure in half-open, got %v", cb.GetState())
 	}
 }
 
 func TestCircuitBreaker_SuccessResetsFailureCount(t *testing.T) {
-	cb := NewCircuitBreaker(Config{
+	cb := circuitbreaker.NewCircuitBreaker(circuitbreaker.Config{
 		MaxFailures:    3,
 		CooldownPeriod: 100 * time.Millisecond,
 	})
@@ -179,27 +181,27 @@ func TestCircuitBreaker_SuccessResetsFailureCount(t *testing.T) {
 	cb.Execute(func() error { return nil })
 
 	// Circuit should still be closed
-	if cb.GetState() != StateClosed {
+	if cb.GetState() != circuitbreaker.StateClosed {
 		t.Errorf("Expected state Closed, got %v", cb.GetState())
 	}
 
 	// Now 3 more failures should be needed to open
 	for i := 0; i < 2; i++ {
 		cb.Execute(func() error { return testErr })
-		if cb.GetState() != StateClosed {
+		if cb.GetState() != circuitbreaker.StateClosed {
 			t.Errorf("Expected state Closed, got %v", cb.GetState())
 		}
 	}
 
 	// Third failure should open
 	cb.Execute(func() error { return testErr })
-	if cb.GetState() != StateOpen {
+	if cb.GetState() != circuitbreaker.StateOpen {
 		t.Errorf("Expected state Open, got %v", cb.GetState())
 	}
 }
 
 func TestCircuitBreaker_GetStateValue(t *testing.T) {
-	cb := NewCircuitBreaker(Config{
+	cb := circuitbreaker.NewCircuitBreaker(circuitbreaker.Config{
 		MaxFailures:    3,
 		CooldownPeriod: 100 * time.Millisecond,
 	})
@@ -220,7 +222,7 @@ func TestCircuitBreaker_GetStateValue(t *testing.T) {
 }
 
 func TestCircuitBreaker_Reset(t *testing.T) {
-	cb := NewCircuitBreaker(Config{
+	cb := circuitbreaker.NewCircuitBreaker(circuitbreaker.Config{
 		MaxFailures:    3,
 		CooldownPeriod: 100 * time.Millisecond,
 	})
@@ -231,14 +233,14 @@ func TestCircuitBreaker_Reset(t *testing.T) {
 		cb.Execute(func() error { return testErr })
 	}
 
-	if cb.GetState() != StateOpen {
+	if cb.GetState() != circuitbreaker.StateOpen {
 		t.Fatalf("Expected state Open, got %v", cb.GetState())
 	}
 
 	// Reset should close the circuit
 	cb.Reset()
 
-	if cb.GetState() != StateClosed {
+	if cb.GetState() != circuitbreaker.StateClosed {
 		t.Errorf("Expected state Closed after reset, got %v", cb.GetState())
 	}
 
@@ -252,7 +254,7 @@ func TestCircuitBreaker_Reset(t *testing.T) {
 }
 
 func TestCircuitBreaker_DefaultConfig(t *testing.T) {
-	cb := NewCircuitBreaker(Config{})
+	cb := circuitbreaker.NewCircuitBreaker(circuitbreaker.Config{})
 
 	// Should use defaults: 3 failures, 30s cooldown
 	testErr := errors.New("test error")
@@ -260,20 +262,20 @@ func TestCircuitBreaker_DefaultConfig(t *testing.T) {
 	// 2 failures should keep circuit closed
 	for i := 0; i < 2; i++ {
 		cb.Execute(func() error { return testErr })
-		if cb.GetState() != StateClosed {
+		if cb.GetState() != circuitbreaker.StateClosed {
 			t.Errorf("Expected state Closed, got %v", cb.GetState())
 		}
 	}
 
 	// 3rd failure should open
 	cb.Execute(func() error { return testErr })
-	if cb.GetState() != StateOpen {
+	if cb.GetState() != circuitbreaker.StateOpen {
 		t.Errorf("Expected state Open after 3 failures, got %v", cb.GetState())
 	}
 }
 
 func TestCircuitBreaker_ConcurrentAccess(t *testing.T) {
-	cb := NewCircuitBreaker(Config{
+	cb := circuitbreaker.NewCircuitBreaker(circuitbreaker.Config{
 		MaxFailures:    5,
 		CooldownPeriod: 100 * time.Millisecond,
 	})

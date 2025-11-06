@@ -33,7 +33,7 @@ func (a *APIKeyAuth) Middleware() func(http.Handler) http.Handler {
 			providedKey := r.Header.Get("X-API-Key")
 			if providedKey == "" {
 				slog.WarnContext(r.Context(), "API key missing",
-					"ip", getClientIP(r),
+					"ip", GetClientIP(r),
 					"method", r.Method,
 					"path", r.URL.Path,
 				)
@@ -42,9 +42,9 @@ func (a *APIKeyAuth) Middleware() func(http.Handler) http.Handler {
 			}
 
 			// Constant-time comparison to prevent timing attacks
-			if !constantTimeCompare(providedKey, a.apiKey) {
+			if !ConstantTimeCompare(providedKey, a.apiKey) {
 				slog.WarnContext(r.Context(), "Invalid API key",
-					"ip", getClientIP(r),
+					"ip", GetClientIP(r),
 					"method", r.Method,
 					"path", r.URL.Path,
 				)
@@ -66,9 +66,9 @@ func (a *APIKeyAuth) unauthorized(w http.ResponseWriter, message string) {
 	w.Write([]byte(`{"error":"unauthorized","message":"` + message + `"}`))
 }
 
-// constantTimeCompare performs constant-time string comparison
+// ConstantTimeCompare performs constant-time string comparison
 // This prevents timing attacks that could reveal the API key
-func constantTimeCompare(a, b string) bool {
+func ConstantTimeCompare(a, b string) bool {
 	if len(a) != len(b) {
 		return false
 	}
@@ -89,7 +89,7 @@ func ProtectedRoutes(apiKey string, publicPaths []string) func(http.Handler) htt
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			// Check if path is public
 			for _, publicPath := range publicPaths {
-				if matchesPath(r.URL.Path, publicPath) {
+				if MatchesPath(r.URL.Path, publicPath) {
 					next.ServeHTTP(w, r)
 					return
 				}
@@ -101,9 +101,9 @@ func ProtectedRoutes(apiKey string, publicPaths []string) func(http.Handler) htt
 	}
 }
 
-// matchesPath checks if a request path matches a pattern
+// MatchesPath checks if a request path matches a pattern
 // Supports exact matches and wildcard patterns (e.g., /api/*)
-func matchesPath(path, pattern string) bool {
+func MatchesPath(path, pattern string) bool {
 	// Exact match
 	if path == pattern {
 		return true

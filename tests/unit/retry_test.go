@@ -1,4 +1,4 @@
-package package package unit_test
+package unit
 
 import (
 	"context"
@@ -121,7 +121,7 @@ func TestRetryWithNonRetryableError(t *testing.T) {
 // TestRetryContextCancellation tests that retry respects context cancellation
 func TestRetryContextCancellation(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
-	
+
 	config := retry.RetryConfig{
 		MaxAttempts: 3,
 		BaseDelay:   10 * time.Millisecond,

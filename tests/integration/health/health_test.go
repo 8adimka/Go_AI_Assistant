@@ -1,7 +1,8 @@
-package package package health_test
+//go:build integration
+
+package health_test
 
 import (
-	"github.com/8adimka/Go_AI_Assistant/internal/health"
 	"context"
 	"encoding/json"
 	"net/http"
@@ -9,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/8adimka/Go_AI_Assistant/internal/health"
 	"github.com/redis/go-redis/v9"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
@@ -33,7 +35,7 @@ func TestHealthHandler_BothServicesHealthy(t *testing.T) {
 	}
 	defer redisClient.Close()
 
-	checker := NewHealthChecker(mongoClient, redisClient)
+	checker := health.NewHealthChecker(mongoClient, redisClient)
 
 	req := httptest.NewRequest("GET", "/health", nil)
 	rec := httptest.NewRecorder()
@@ -46,7 +48,7 @@ func TestHealthHandler_BothServicesHealthy(t *testing.T) {
 	}
 
 	// Parse response
-	var response HealthResponse
+	var response health.HealthResponse
 	if err := json.Unmarshal(rec.Body.Bytes(), &response); err != nil {
 		t.Fatalf("Failed to parse response: %v", err)
 	}
@@ -84,7 +86,7 @@ func TestHealthHandler_NoMongoDB(t *testing.T) {
 	}
 	defer redisClient.Close()
 
-	checker := NewHealthChecker(nil, redisClient)
+	checker := health.NewHealthChecker(nil, redisClient)
 
 	req := httptest.NewRequest("GET", "/health", nil)
 	rec := httptest.NewRecorder()
@@ -92,7 +94,7 @@ func TestHealthHandler_NoMongoDB(t *testing.T) {
 	checker.HealthHandler(rec, req)
 
 	// Parse response
-	var response HealthResponse
+	var response health.HealthResponse
 	if err := json.Unmarshal(rec.Body.Bytes(), &response); err != nil {
 		t.Fatalf("Failed to parse response: %v", err)
 	}
@@ -116,7 +118,7 @@ func TestHealthHandler_NoRedis(t *testing.T) {
 	}
 	defer mongoClient.Disconnect(context.Background())
 
-	checker := NewHealthChecker(mongoClient, nil)
+	checker := health.NewHealthChecker(mongoClient, nil)
 
 	req := httptest.NewRequest("GET", "/health", nil)
 	rec := httptest.NewRecorder()
@@ -124,7 +126,7 @@ func TestHealthHandler_NoRedis(t *testing.T) {
 	checker.HealthHandler(rec, req)
 
 	// Parse response
-	var response HealthResponse
+	var response health.HealthResponse
 	if err := json.Unmarshal(rec.Body.Bytes(), &response); err != nil {
 		t.Fatalf("Failed to parse response: %v", err)
 	}
@@ -154,7 +156,7 @@ func TestHealthHandler_RedisDown(t *testing.T) {
 	})
 	defer redisClient.Close()
 
-	checker := NewHealthChecker(mongoClient, redisClient)
+	checker := health.NewHealthChecker(mongoClient, redisClient)
 
 	req := httptest.NewRequest("GET", "/health", nil)
 	rec := httptest.NewRecorder()
@@ -167,7 +169,7 @@ func TestHealthHandler_RedisDown(t *testing.T) {
 	}
 
 	// Parse response
-	var response HealthResponse
+	var response health.HealthResponse
 	if err := json.Unmarshal(rec.Body.Bytes(), &response); err != nil {
 		t.Fatalf("Failed to parse response: %v", err)
 	}
@@ -210,7 +212,7 @@ func TestReadyHandler_BothServicesReady(t *testing.T) {
 	}
 	defer redisClient.Close()
 
-	checker := NewHealthChecker(mongoClient, redisClient)
+	checker := health.NewHealthChecker(mongoClient, redisClient)
 
 	req := httptest.NewRequest("GET", "/ready", nil)
 	rec := httptest.NewRecorder()
@@ -223,7 +225,7 @@ func TestReadyHandler_BothServicesReady(t *testing.T) {
 	}
 
 	// Parse response
-	var response HealthResponse
+	var response health.HealthResponse
 	if err := json.Unmarshal(rec.Body.Bytes(), &response); err != nil {
 		t.Fatalf("Failed to parse response: %v", err)
 	}
@@ -253,7 +255,7 @@ func TestReadyHandler_RedisNotReady(t *testing.T) {
 	defer mongoClient.Disconnect(context.Background())
 
 	// Redis not configured
-	checker := NewHealthChecker(mongoClient, nil)
+	checker := health.NewHealthChecker(mongoClient, nil)
 
 	req := httptest.NewRequest("GET", "/ready", nil)
 	rec := httptest.NewRecorder()
@@ -266,7 +268,7 @@ func TestReadyHandler_RedisNotReady(t *testing.T) {
 	}
 
 	// Parse response
-	var response HealthResponse
+	var response health.HealthResponse
 	if err := json.Unmarshal(rec.Body.Bytes(), &response); err != nil {
 		t.Fatalf("Failed to parse response: %v", err)
 	}
@@ -283,7 +285,7 @@ func TestReadyHandler_RedisNotReady(t *testing.T) {
 }
 
 func TestHealthResponse_JSON(t *testing.T) {
-	response := HealthResponse{
+	response := health.HealthResponse{
 		Status:    "healthy",
 		Timestamp: time.Date(2023, 10, 1, 12, 0, 0, 0, time.UTC),
 		Checks: map[string]string{
@@ -297,7 +299,7 @@ func TestHealthResponse_JSON(t *testing.T) {
 		t.Fatalf("Failed to marshal response: %v", err)
 	}
 
-	var decoded HealthResponse
+	var decoded health.HealthResponse
 	if err := json.Unmarshal(data, &decoded); err != nil {
 		t.Fatalf("Failed to unmarshal response: %v", err)
 	}

@@ -1,12 +1,12 @@
-package package package errorsx_test
+package errorsx_test
 
 import (
-	"github.com/8adimka/Go_AI_Assistant/internal/errorsx"
 	"errors"
 	"fmt"
 	"strings"
 	"testing"
 
+	"github.com/8adimka/Go_AI_Assistant/internal/errorsx"
 	"github.com/twitchtv/twirp"
 )
 
@@ -33,7 +33,7 @@ func TestWrap(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := Wrap(tt.err, tt.message)
+			result := errorsx.Wrap(tt.err, tt.message)
 			if tt.want == "" && result != nil {
 				t.Errorf("Expected nil, got %v", result)
 			} else if tt.want != "" && result.Error() != tt.want {
@@ -45,14 +45,14 @@ func TestWrap(t *testing.T) {
 
 func TestWrapf(t *testing.T) {
 	err := errors.New("original error")
-	result := Wrapf(err, "user %s failed operation %d", "john", 42)
+	result := errorsx.Wrapf(err, "user %s failed operation %d", "john", 42)
 	expected := "user john failed operation 42: original error"
 	if result.Error() != expected {
 		t.Errorf("Expected %q, got %q", expected, result.Error())
 	}
 
 	// Test nil error
-	result = Wrapf(nil, "should not wrap")
+	result = errorsx.Wrapf(nil, "should not wrap")
 	if result != nil {
 		t.Errorf("Expected nil, got %v", result)
 	}
@@ -72,33 +72,33 @@ func TestToTwirpError(t *testing.T) {
 		},
 		{
 			name:         "NotFound error maps to NotFound",
-			err:          ErrNotFound,
+			err:          errorsx.ErrNotFound,
 			expectedCode: twirp.NotFound,
 			checkMessage: true,
 		},
 		{
 			name:         "wrapped NotFound error maps to NotFound",
-			err:          fmt.Errorf("conversation not found: %w", ErrNotFound),
+			err:          fmt.Errorf("conversation not found: %w", errorsx.ErrNotFound),
 			expectedCode: twirp.NotFound,
 		},
 		{
 			name:         "InvalidInput error maps to InvalidArgument",
-			err:          ErrInvalidInput,
+			err:          errorsx.ErrInvalidInput,
 			expectedCode: twirp.InvalidArgument,
 		},
 		{
 			name:         "Unauthorized error maps to Unauthenticated",
-			err:          ErrUnauthorized,
+			err:          errorsx.ErrUnauthorized,
 			expectedCode: twirp.Unauthenticated,
 		},
 		{
 			name:         "Timeout error maps to DeadlineExceeded",
-			err:          ErrTimeout,
+			err:          errorsx.ErrTimeout,
 			expectedCode: twirp.DeadlineExceeded,
 		},
 		{
 			name:         "Unavailable error maps to Unavailable",
-			err:          ErrUnavailable,
+			err:          errorsx.ErrUnavailable,
 			expectedCode: twirp.Unavailable,
 		},
 		{
@@ -115,7 +115,7 @@ func TestToTwirpError(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := ToTwirpError(tt.err)
+			result := errorsx.ToTwirpError(tt.err)
 
 			if tt.err == nil {
 				if result != nil {
@@ -141,14 +141,14 @@ func TestToTwirpError(t *testing.T) {
 }
 
 func TestToTwirpErrorWithMeta(t *testing.T) {
-	err := ErrNotFound
+	err := errorsx.ErrNotFound
 	meta := map[string]string{
 		"trace_id":        "abc123",
 		"conversation_id": "conv456",
 		"user_id":         "user789",
 	}
 
-	result := ToTwirpErrorWithMeta(err, meta)
+	result := errorsx.ToTwirpErrorWithMeta(err, meta)
 
 	// Verify it's a Twirp error
 	twirpErr, ok := result.(twirp.Error)
@@ -170,7 +170,7 @@ func TestToTwirpErrorWithMeta(t *testing.T) {
 	}
 
 	// Test with nil error
-	result = ToTwirpErrorWithMeta(nil, meta)
+	result = errorsx.ToTwirpErrorWithMeta(nil, meta)
 	if result != nil {
 		t.Errorf("Expected nil, got %v", result)
 	}
@@ -184,17 +184,17 @@ func TestIsNotFound(t *testing.T) {
 	}{
 		{
 			name: "direct ErrNotFound",
-			err:  ErrNotFound,
+			err:  errorsx.ErrNotFound,
 			want: true,
 		},
 		{
 			name: "wrapped ErrNotFound",
-			err:  fmt.Errorf("conversation not found: %w", ErrNotFound),
+			err:  fmt.Errorf("conversation not found: %w", errorsx.ErrNotFound),
 			want: true,
 		},
 		{
 			name: "other error",
-			err:  ErrInvalidInput,
+			err:  errorsx.ErrInvalidInput,
 			want: false,
 		},
 		{
@@ -206,7 +206,7 @@ func TestIsNotFound(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := IsNotFound(tt.err); got != tt.want {
+			if got := errorsx.IsNotFound(tt.err); got != tt.want {
 				t.Errorf("IsNotFound() = %v, want %v", got, tt.want)
 			}
 		})
@@ -214,50 +214,50 @@ func TestIsNotFound(t *testing.T) {
 }
 
 func TestIsInvalidInput(t *testing.T) {
-	if !IsInvalidInput(ErrInvalidInput) {
+	if !errorsx.IsInvalidInput(errorsx.ErrInvalidInput) {
 		t.Error("Expected true for ErrInvalidInput")
 	}
 
-	wrapped := fmt.Errorf("validation failed: %w", ErrInvalidInput)
-	if !IsInvalidInput(wrapped) {
+	wrapped := fmt.Errorf("validation failed: %w", errorsx.ErrInvalidInput)
+	if !errorsx.IsInvalidInput(wrapped) {
 		t.Error("Expected true for wrapped ErrInvalidInput")
 	}
 
-	if IsInvalidInput(ErrNotFound) {
+	if errorsx.IsInvalidInput(errorsx.ErrNotFound) {
 		t.Error("Expected false for different error")
 	}
 
-	if IsInvalidInput(nil) {
+	if errorsx.IsInvalidInput(nil) {
 		t.Error("Expected false for nil")
 	}
 }
 
 func TestIsUnauthorized(t *testing.T) {
-	if !IsUnauthorized(ErrUnauthorized) {
+	if !errorsx.IsUnauthorized(errorsx.ErrUnauthorized) {
 		t.Error("Expected true for ErrUnauthorized")
 	}
 
-	if IsUnauthorized(ErrInvalidInput) {
+	if errorsx.IsUnauthorized(errorsx.ErrInvalidInput) {
 		t.Error("Expected false for different error")
 	}
 }
 
 func TestIsTimeout(t *testing.T) {
-	if !IsTimeout(ErrTimeout) {
+	if !errorsx.IsTimeout(errorsx.ErrTimeout) {
 		t.Error("Expected true for ErrTimeout")
 	}
 
-	if IsTimeout(ErrInvalidInput) {
+	if errorsx.IsTimeout(errorsx.ErrInvalidInput) {
 		t.Error("Expected false for different error")
 	}
 }
 
 func TestIsUnavailable(t *testing.T) {
-	if !IsUnavailable(ErrUnavailable) {
+	if !errorsx.IsUnavailable(errorsx.ErrUnavailable) {
 		t.Error("Expected true for ErrUnavailable")
 	}
 
-	if IsUnavailable(ErrInvalidInput) {
+	if errorsx.IsUnavailable(errorsx.ErrInvalidInput) {
 		t.Error("Expected false for different error")
 	}
 }
@@ -265,8 +265,8 @@ func TestIsUnavailable(t *testing.T) {
 func TestErrorChaining(t *testing.T) {
 	// Test error chaining works correctly
 	baseErr := errors.New("database connection failed")
-	wrappedOnce := Wrap(baseErr, "failed to query user")
-	wrappedTwice := Wrap(wrappedOnce, "GetUser operation failed")
+	wrappedOnce := errorsx.Wrap(baseErr, "failed to query user")
+	wrappedTwice := errorsx.Wrap(wrappedOnce, "GetUser operation failed")
 
 	// Should contain all messages
 	errMsg := wrappedTwice.Error()
@@ -289,11 +289,11 @@ func TestErrorChaining(t *testing.T) {
 func TestToTwirpErrorPreservesStack(t *testing.T) {
 	// Create a chain of wrapped errors
 	baseErr := errors.New("database error")
-	wrapped := Wrap(baseErr, "query failed")
-	wrappedAgain := Wrap(wrapped, "operation failed")
+	wrapped := errorsx.Wrap(baseErr, "query failed")
+	wrappedAgain := errorsx.Wrap(wrapped, "operation failed")
 
 	// Convert to Twirp error
-	twirpErr := ToTwirpError(wrappedAgain)
+	twirpErr := errorsx.ToTwirpError(wrappedAgain)
 
 	// Message should preserve the chain
 	msg := twirpErr.Error()
@@ -303,7 +303,7 @@ func TestToTwirpErrorPreservesStack(t *testing.T) {
 }
 
 func TestMultipleMeta(t *testing.T) {
-	err := ErrTimeout
+	err := errorsx.ErrTimeout
 	meta1 := map[string]string{
 		"request_id": "req123",
 		"user_id":    "user456",
@@ -314,11 +314,11 @@ func TestMultipleMeta(t *testing.T) {
 	}
 
 	// Add first set of metadata
-	result := ToTwirpErrorWithMeta(err, meta1)
+	result := errorsx.ToTwirpErrorWithMeta(err, meta1)
 	twirpErr1, _ := result.(twirp.Error)
 
 	// Add second set of metadata
-	result = ToTwirpErrorWithMeta(result, meta2)
+	result = errorsx.ToTwirpErrorWithMeta(result, meta2)
 	twirpErr2, _ := result.(twirp.Error)
 
 	// Verify all metadata is present

@@ -10,7 +10,7 @@ test-integration:
 
 # Run all e2e tests
 test-e2e:
-	go test ./tests/e2e/...
+	go test -tags=e2e ./tests/e2e/...
 
 # Run all tests
 test-all: test-unit test-integration test-e2e
@@ -67,3 +67,4 @@ help:
 	@echo "  test-clean             - Clean test cache"
 	@echo "  test-coverage          - Generate test coverage report"
 	@echo "  help                   - Show this help message"
+	

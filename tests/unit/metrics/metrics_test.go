@@ -1,12 +1,12 @@
-package package package metrics_test
+package metrics_test
 
 import (
-	"github.com/8adimka/Go_AI_Assistant/internal/metrics"
 	"context"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
+	"github.com/8adimka/Go_AI_Assistant/internal/metrics"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/exporters/prometheus"
 	"go.opentelemetry.io/otel/sdk/metric"
@@ -17,7 +17,7 @@ import (
 func TestHTTPMetricsMiddleware(t *testing.T) {
 	// Create a test meter provider with Prometheus exporter
 	ctx := context.Background()
-	
+
 	res, err := resource.New(ctx,
 		resource.WithAttributes(
 			semconv.ServiceName("test-service"),
@@ -40,7 +40,7 @@ func TestHTTPMetricsMiddleware(t *testing.T) {
 
 	// Create metrics
 	meter := provider.Meter("test")
-	appMetrics, err := NewMetrics(meter)
+	appMetrics, err := metrics.NewMetrics(meter)
 	if err != nil {
 		t.Fatalf("Failed to create metrics: %v", err)
 	}
@@ -81,7 +81,7 @@ func TestHTTPMetricsMiddleware(t *testing.T) {
 		w.Write([]byte("error"))
 	})
 	wrappedErrorHandler := appMetrics.HTTPMetricsMiddleware()(errorHandler)
-	
+
 	req3 := httptest.NewRequest("GET", "/error", nil)
 	rec3 := httptest.NewRecorder()
 	wrappedErrorHandler.ServeHTTP(rec3, req3)
@@ -97,7 +97,7 @@ func TestHTTPMetricsMiddleware(t *testing.T) {
 
 func TestNewMetrics(t *testing.T) {
 	ctx := context.Background()
-	
+
 	res, err := resource.New(ctx,
 		resource.WithAttributes(
 			semconv.ServiceName("test-service"),
@@ -118,8 +118,8 @@ func TestNewMetrics(t *testing.T) {
 	)
 
 	meter := provider.Meter("test")
-	
-	metrics, err := NewMetrics(meter)
+
+	metrics, err := metrics.NewMetrics(meter)
 	if err != nil {
 		t.Fatalf("Failed to create metrics: %v", err)
 	}
@@ -128,49 +128,29 @@ func TestNewMetrics(t *testing.T) {
 		t.Fatal("Expected metrics to be non-nil")
 	}
 
-	if metrics.httpRequestsTotal == nil {
-		t.Error("httpRequestsTotal should not be nil")
-	}
+	// Test that metrics work by using public methods
+	metrics.RecordTwirpRequest(ctx, "TestMethod", "success")
 
-	if metrics.httpRequestDuration == nil {
-		t.Error("httpRequestDuration should not be nil")
-	}
+	// Create a test handler to verify middleware works
+	testHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("test"))
+	})
 
-	if metrics.httpRequestsInFlight == nil {
-		t.Error("httpRequestsInFlight should not be nil")
-	}
+	wrappedHandler := metrics.HTTPMetricsMiddleware()(testHandler)
+	req := httptest.NewRequest("GET", "/test", nil)
+	rec := httptest.NewRecorder()
+	wrappedHandler.ServeHTTP(rec, req)
 
-	if metrics.twirpRequestsTotal == nil {
-		t.Error("twirpRequestsTotal should not be nil")
+	if rec.Code != http.StatusOK {
+		t.Errorf("Expected status 200, got %d", rec.Code)
 	}
 }
 
 func TestResponseWriter(t *testing.T) {
-	rec := httptest.NewRecorder()
-	rw := &responseWriter{
-		ResponseWriter: rec,
-		statusCode:     http.StatusOK,
-	}
-
-	// Test default status code
-	if rw.statusCode != http.StatusOK {
-		t.Errorf("Expected default status code 200, got %d", rw.statusCode)
-	}
-
-	// Test WriteHeader
-	rw.WriteHeader(http.StatusCreated)
-	if rw.statusCode != http.StatusCreated {
-		t.Errorf("Expected status code 201, got %d", rw.statusCode)
-	}
-
-	if rec.Code != http.StatusCreated {
-		t.Errorf("Expected recorder status code 201, got %d", rec.Code)
-	}
-}
-
-func TestRecordTwirpRequest(t *testing.T) {
+	// Test that the response writer works through the middleware
 	ctx := context.Background()
-	
+
 	res, err := resource.New(ctx,
 		resource.WithAttributes(
 			semconv.ServiceName("test-service"),
@@ -191,8 +171,53 @@ func TestRecordTwirpRequest(t *testing.T) {
 	)
 
 	meter := provider.Meter("test")
-	
-	metrics, err := NewMetrics(meter)
+
+	appMetrics, err := metrics.NewMetrics(meter)
+	if err != nil {
+		t.Fatalf("Failed to create metrics: %v", err)
+	}
+
+	// Create a handler that tests different status codes
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusCreated)
+		w.Write([]byte("created"))
+	})
+
+	wrappedHandler := appMetrics.HTTPMetricsMiddleware()(handler)
+	req := httptest.NewRequest("GET", "/test", nil)
+	rec := httptest.NewRecorder()
+	wrappedHandler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusCreated {
+		t.Errorf("Expected status code 201, got %d", rec.Code)
+	}
+}
+
+func TestRecordTwirpRequest(t *testing.T) {
+	ctx := context.Background()
+
+	res, err := resource.New(ctx,
+		resource.WithAttributes(
+			semconv.ServiceName("test-service"),
+		),
+	)
+	if err != nil {
+		t.Fatalf("Failed to create resource: %v", err)
+	}
+
+	exporter, err := prometheus.New()
+	if err != nil {
+		t.Fatalf("Failed to create Prometheus exporter: %v", err)
+	}
+
+	provider := metric.NewMeterProvider(
+		metric.WithResource(res),
+		metric.WithReader(exporter),
+	)
+
+	meter := provider.Meter("test")
+
+	metrics, err := metrics.NewMetrics(meter)
 	if err != nil {
 		t.Fatalf("Failed to create metrics: %v", err)
 	}
@@ -205,7 +230,7 @@ func TestRecordTwirpRequest(t *testing.T) {
 func TestMetricsMiddlewareWithMultipleRequests(t *testing.T) {
 	// Test that middleware handles multiple concurrent requests correctly
 	ctx := context.Background()
-	
+
 	res, err := resource.New(ctx,
 		resource.WithAttributes(
 			semconv.ServiceName("test-multiple-requests"),
@@ -227,7 +252,7 @@ func TestMetricsMiddlewareWithMultipleRequests(t *testing.T) {
 	otel.SetMeterProvider(provider)
 
 	meter := provider.Meter("test")
-	appMetrics, err := NewMetrics(meter)
+	appMetrics, err := metrics.NewMetrics(meter)
 	if err != nil {
 		t.Fatalf("Failed to create metrics: %v", err)
 	}
@@ -251,11 +276,11 @@ func TestMetricsMiddlewareWithMultipleRequests(t *testing.T) {
 	// Test each handler
 	for path, handler := range handlers {
 		wrappedHandler := appMetrics.HTTPMetricsMiddleware()(handler)
-		
+
 		req := httptest.NewRequest("GET", path, nil)
 		rec := httptest.NewRecorder()
 		wrappedHandler.ServeHTTP(rec, req)
-		
+
 		// Verify handler executed correctly
 		if rec.Code == 0 {
 			t.Errorf("Handler for %s did not set status code", path)

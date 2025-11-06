@@ -1,7 +1,6 @@
-package package package tools_test
+package tools_test
 
 import (
-	"github.com/8adimka/Go_AI_Assistant/internal/tools"
 	"context"
 	"testing"
 	"time"
