@@ -16,6 +16,13 @@ type Metrics struct {
 	httpRequestDuration  metric.Float64Histogram
 	httpRequestsInFlight metric.Int64UpDownCounter
 	twirpRequestsTotal   metric.Int64Counter
+
+	// OpenAI metrics
+	openaiTokensInput     metric.Int64Counter
+	openaiTokensOutput    metric.Int64Counter
+	openaiTokensTotal     metric.Int64Counter
+	openaiRequestsTotal   metric.Int64Counter
+	openaiRequestDuration metric.Float64Histogram
 }
 
 // NewMetrics creates and initializes all metrics
@@ -56,11 +63,62 @@ func NewMetrics(meter metric.Meter) (*Metrics, error) {
 		return nil, err
 	}
 
+	// OpenAI metrics
+	openaiTokensInput, err := meter.Int64Counter(
+		"openai_tokens_input_total",
+		metric.WithDescription("Total OpenAI input tokens consumed"),
+		metric.WithUnit("tokens"),
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	openaiTokensOutput, err := meter.Int64Counter(
+		"openai_tokens_output_total",
+		metric.WithDescription("Total OpenAI output tokens consumed"),
+		metric.WithUnit("tokens"),
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	openaiTokensTotal, err := meter.Int64Counter(
+		"openai_tokens_total",
+		metric.WithDescription("Total OpenAI tokens consumed"),
+		metric.WithUnit("tokens"),
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	openaiRequestsTotal, err := meter.Int64Counter(
+		"openai_requests_total",
+		metric.WithDescription("Total OpenAI API requests"),
+		metric.WithUnit("1"),
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	openaiRequestDuration, err := meter.Float64Histogram(
+		"openai_request_duration_ms",
+		metric.WithDescription("OpenAI API request duration in milliseconds"),
+		metric.WithUnit("ms"),
+	)
+	if err != nil {
+		return nil, err
+	}
+
 	return &Metrics{
-		httpRequestsTotal:    httpRequestsTotal,
-		httpRequestDuration:  httpRequestDuration,
-		httpRequestsInFlight: httpRequestsInFlight,
-		twirpRequestsTotal:   twirpRequestsTotal,
+		httpRequestsTotal:     httpRequestsTotal,
+		httpRequestDuration:   httpRequestDuration,
+		httpRequestsInFlight:  httpRequestsInFlight,
+		twirpRequestsTotal:    twirpRequestsTotal,
+		openaiTokensInput:     openaiTokensInput,
+		openaiTokensOutput:    openaiTokensOutput,
+		openaiTokensTotal:     openaiTokensTotal,
+		openaiRequestsTotal:   openaiRequestsTotal,
+		openaiRequestDuration: openaiRequestDuration,
 	}, nil
 }
 
@@ -113,6 +171,29 @@ func (m *Metrics) RecordTwirpRequest(ctx context.Context, method string, status 
 			attribute.String("status", status),
 		),
 	)
+}
+
+// TokenUsage represents OpenAI token usage
+type TokenUsage struct {
+	PromptTokens     int
+	CompletionTokens int
+	TotalTokens      int
+}
+
+// RecordOpenAITokens records OpenAI token usage metrics
+func (m *Metrics) RecordOpenAITokens(ctx context.Context, operation, model, userID, platform string, usage TokenUsage, duration time.Duration) {
+	attrs := []attribute.KeyValue{
+		attribute.String("operation", operation), // "title" or "reply"
+		attribute.String("model", model),
+		attribute.String("user_id", userID),
+		attribute.String("platform", platform),
+	}
+
+	m.openaiTokensInput.Add(ctx, int64(usage.PromptTokens), metric.WithAttributes(attrs...))
+	m.openaiTokensOutput.Add(ctx, int64(usage.CompletionTokens), metric.WithAttributes(attrs...))
+	m.openaiTokensTotal.Add(ctx, int64(usage.TotalTokens), metric.WithAttributes(attrs...))
+	m.openaiRequestsTotal.Add(ctx, 1, metric.WithAttributes(attrs...))
+	m.openaiRequestDuration.Record(ctx, float64(duration.Milliseconds()), metric.WithAttributes(attrs...))
 }
 
 // responseWriter captures the status code for metrics

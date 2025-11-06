@@ -59,7 +59,7 @@ func main() {
 	}
 
 	repo := model.New(mongo)
-	assist := assistant.New()
+	assist := assistant.New(appMetrics)
 
 	// Create Redis cache for session management with configurable TTL
 	sessionTTL := time.Duration(cfg.SessionTTLMinutes) * time.Minute

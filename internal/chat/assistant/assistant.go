@@ -10,6 +10,7 @@ import (
 
 	"github.com/8adimka/Go_AI_Assistant/internal/chat/model"
 	"github.com/8adimka/Go_AI_Assistant/internal/config"
+	"github.com/8adimka/Go_AI_Assistant/internal/metrics"
 	"github.com/8adimka/Go_AI_Assistant/internal/redisx"
 	"github.com/8adimka/Go_AI_Assistant/internal/retry"
 	"github.com/8adimka/Go_AI_Assistant/internal/tools/factory"
@@ -22,9 +23,10 @@ type Assistant struct {
 	cache        *redisx.Cache
 	toolRegistry *registry.ToolRegistry
 	retryConfig  retry.RetryConfig
+	metrics      *metrics.Metrics
 }
 
-func New() *Assistant {
+func New(appMetrics *metrics.Metrics) *Assistant {
 	// Load configuration
 	cfg := config.Load()
 	redisClient := redisx.MustConnect(cfg.RedisAddr)
@@ -42,6 +44,7 @@ func New() *Assistant {
 		cache:        cache,
 		toolRegistry: toolRegistry,
 		retryConfig:  retry.ConfigFromAppConfig(cfg),
+		metrics:      appMetrics,
 	}
 }
 
@@ -50,7 +53,11 @@ func (a *Assistant) Title(ctx context.Context, conv *model.Conversation) (string
 		return "An empty conversation", nil
 	}
 
-	slog.InfoContext(ctx, "Generating title for conversation", "conversation_id", conv.ID)
+	slog.InfoContext(ctx, "Generating title for conversation",
+		"conversation_id", conv.ID.Hex(),
+		"user_id", conv.UserID,
+		"platform", conv.Platform,
+	)
 
 	// Try to get from cache first
 	userMessage := conv.Messages[0].Content
@@ -58,7 +65,10 @@ func (a *Assistant) Title(ctx context.Context, conv *model.Conversation) (string
 
 	var cachedTitle string
 	if err := a.cache.Get(ctx, cacheKey, &cachedTitle); err == nil {
-		slog.InfoContext(ctx, "Title retrieved from cache", "conversation_id", conv.ID)
+		slog.InfoContext(ctx, "Title retrieved from cache",
+			"conversation_id", conv.ID.Hex(),
+			"user_id", conv.UserID,
+		)
 		return cachedTitle, nil
 	} else if !errors.Is(err, redisx.ErrCacheMiss) {
 		slog.WarnContext(ctx, "Cache error, proceeding without cache", "error", err)
@@ -86,7 +96,8 @@ Generate title for:`
 		openai.UserMessage(userMessage),
 	}
 
-	// Use retry logic for OpenAI API call
+	// Use retry logic for OpenAI API call with timing
+	start := time.Now()
 	resp, err := retry.RetryWithResult(ctx, a.retryConfig, func() (*openai.ChatCompletion, error) {
 		return a.cli.Chat.Completions.New(ctx, openai.ChatCompletionNewParams{
 			Model:     openai.ChatModelGPT4Turbo, // Faster model for titles
@@ -94,6 +105,7 @@ Generate title for:`
 			MaxTokens: openai.Int(30), // Limit tokens for brevity
 		})
 	})
+	duration := time.Since(start)
 
 	if err != nil {
 		return "", err
@@ -102,6 +114,30 @@ Generate title for:`
 	if len(resp.Choices) == 0 || strings.TrimSpace(resp.Choices[0].Message.Content) == "" {
 		return "", errors.New("empty response from OpenAI for title generation")
 	}
+
+	// Record OpenAI metrics
+	if a.metrics != nil {
+		usage := metrics.TokenUsage{
+			PromptTokens:     int(resp.Usage.PromptTokens),
+			CompletionTokens: int(resp.Usage.CompletionTokens),
+			TotalTokens:      int(resp.Usage.TotalTokens),
+		}
+		a.metrics.RecordOpenAITokens(ctx, "title", string(openai.ChatModelGPT4Turbo),
+			conv.UserID, conv.Platform, usage, duration)
+	}
+
+	// Log OpenAI API call with token usage
+	slog.InfoContext(ctx, "OpenAI API call completed",
+		"operation", "title",
+		"model", openai.ChatModelGPT4Turbo,
+		"conversation_id", conv.ID.Hex(),
+		"user_id", conv.UserID,
+		"platform", conv.Platform,
+		"prompt_tokens", resp.Usage.PromptTokens,
+		"completion_tokens", resp.Usage.CompletionTokens,
+		"total_tokens", resp.Usage.TotalTokens,
+		"duration_ms", duration.Milliseconds(),
+	)
 
 	title := resp.Choices[0].Message.Content
 	title = a.formatTitle(title)
@@ -162,7 +198,12 @@ func (a *Assistant) Reply(ctx context.Context, conv *model.Conversation) (string
 		return "", errors.New("conversation has no messages")
 	}
 
-	slog.InfoContext(ctx, "Generating reply for conversation", "conversation_id", conv.ID)
+	slog.InfoContext(ctx, "Generating reply for conversation",
+		"conversation_id", conv.ID.Hex(),
+		"user_id", conv.UserID,
+		"platform", conv.Platform,
+		"messages_count", len(conv.Messages),
+	)
 
 	msgs := []openai.ChatCompletionMessageParamUnion{
 		openai.SystemMessage("You are a helpful, concise AI assistant. Provide accurate, safe, and clear responses."),
@@ -181,7 +222,8 @@ func (a *Assistant) Reply(ctx context.Context, conv *model.Conversation) (string
 	tools := a.convertToolsToOpenAIFormat()
 
 	for i := 0; i < 15; i++ {
-		// Use retry logic for OpenAI API call
+		// Use retry logic for OpenAI API call with timing
+		start := time.Now()
 		resp, err := retry.RetryWithResult(ctx, a.retryConfig, func() (*openai.ChatCompletion, error) {
 			return a.cli.Chat.Completions.New(ctx, openai.ChatCompletionNewParams{
 				Model:    openai.ChatModelGPT4_1,
@@ -189,6 +231,7 @@ func (a *Assistant) Reply(ctx context.Context, conv *model.Conversation) (string
 				Tools:    tools,
 			})
 		})
+		duration := time.Since(start)
 
 		if err != nil {
 			return "", err
@@ -198,16 +241,50 @@ func (a *Assistant) Reply(ctx context.Context, conv *model.Conversation) (string
 			return "", errors.New("no choices returned by OpenAI")
 		}
 
+		// Record OpenAI metrics
+		if a.metrics != nil {
+			usage := metrics.TokenUsage{
+				PromptTokens:     int(resp.Usage.PromptTokens),
+				CompletionTokens: int(resp.Usage.CompletionTokens),
+				TotalTokens:      int(resp.Usage.TotalTokens),
+			}
+			a.metrics.RecordOpenAITokens(ctx, "reply", string(openai.ChatModelGPT4_1),
+				conv.UserID, conv.Platform, usage, duration)
+		}
+
+		// Log OpenAI API call with token usage
+		slog.InfoContext(ctx, "OpenAI API call completed",
+			"operation", "reply",
+			"model", openai.ChatModelGPT4_1,
+			"conversation_id", conv.ID.Hex(),
+			"user_id", conv.UserID,
+			"platform", conv.Platform,
+			"iteration", i+1,
+			"prompt_tokens", resp.Usage.PromptTokens,
+			"completion_tokens", resp.Usage.CompletionTokens,
+			"total_tokens", resp.Usage.TotalTokens,
+			"duration_ms", duration.Milliseconds(),
+			"has_tool_calls", len(resp.Choices[0].Message.ToolCalls) > 0,
+		)
+
 		if message := resp.Choices[0].Message; len(message.ToolCalls) > 0 {
 			msgs = append(msgs, message.ToParam())
 
 			for _, call := range message.ToolCalls {
-				slog.InfoContext(ctx, "Tool call received", "name", call.Function.Name, "args", call.Function.Arguments)
+				slog.InfoContext(ctx, "Tool call received",
+					"conversation_id", conv.ID.Hex(),
+					"tool_name", call.Function.Name,
+					"args", call.Function.Arguments,
+				)
 
 				// Execute tool using the registry
 				result, err := a.executeTool(ctx, call.Function.Name, call.Function.Arguments)
 				if err != nil {
-					slog.ErrorContext(ctx, "Tool execution failed", "name", call.Function.Name, "error", err)
+					slog.ErrorContext(ctx, "Tool execution failed",
+						"conversation_id", conv.ID.Hex(),
+						"tool_name", call.Function.Name,
+						"error", err,
+					)
 					msgs = append(msgs, openai.ToolMessage("tool execution failed: "+err.Error(), call.ID))
 				} else {
 					msgs = append(msgs, openai.ToolMessage(result, call.ID))

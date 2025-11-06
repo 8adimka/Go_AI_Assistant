@@ -52,14 +52,12 @@ func (f *Factory) CreateAllTools() *registry.ToolRegistry {
 func (f *Factory) registerDateTimeTool() {
 	dateTimeTool := datetime.New()
 	f.registry.Register(dateTimeTool)
-	slog.Debug("DateTime tool registered", "name", dateTimeTool.Name())
 }
 
 // registerWeatherTool registers the weather tool
 func (f *Factory) registerWeatherTool(weatherService *weather.FallbackWeatherService) {
 	weatherTool := weathertool.New(weatherService)
 	f.registry.Register(weatherTool)
-	slog.Debug("Weather tool registered", "name", weatherTool.Name())
 }
 
 // registerHolidaysTool registers the holidays tool
@@ -68,7 +66,6 @@ func (f *Factory) registerHolidaysTool() {
 	calendarURL := "https://www.officeholidays.com/ics/spain/catalonia"
 	holidaysTool := holidays.New(calendarURL)
 	f.registry.Register(holidaysTool)
-	slog.Debug("Holidays tool registered", "name", holidaysTool.Name())
 }
 
 // GetRegistry returns the tool registry

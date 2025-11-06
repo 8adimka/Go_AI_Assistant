@@ -158,11 +158,50 @@ RETRY_MAX_DELAY_MS=5000                  # Max delay (milliseconds)
 
 **Prometheus Metrics** (`/metrics`):
 
-- `http_requests_total` - Total HTTP requests
-- `http_request_duration_seconds` - Request latency
-- `http_requests_in_flight` - Active requests
-- `openai_tokens_input_total` - OpenAI token usage
-- `weather_circuit_state` - Circuit breaker status
+### HTTP Metrics
+
+- `http_requests_total` - Total HTTP requests (by method, path, status)
+- `http_request_duration_seconds` - Request latency histogram
+- `http_requests_in_flight` - Active requests counter
+
+### OpenAI Metrics (Token Usage & Cost Tracking)
+
+- `openai_tokens_input_total` - Total input tokens consumed (by operation, model, user_id, platform)
+- `openai_tokens_output_total` - Total output tokens consumed (by operation, model, user_id, platform)
+- `openai_tokens_total` - Total tokens consumed (by operation, model, user_id, platform)
+- `openai_requests_total` - Total OpenAI API requests (by operation, model, user_id, platform)
+- `openai_request_duration_ms` - OpenAI API request duration histogram
+
+### Circuit Breaker Metrics
+
+- `weather_circuit_state` - Circuit breaker status (open/closed/half-open)
+
+### Example Prometheus Queries
+
+**Track token usage per user:**
+
+```promql
+# Tokens consumed by user in last hour
+sum by (user_id) (
+  rate(openai_tokens_total{user_id!=""}[1h])
+) * 3600
+```
+
+**Calculate costs (GPT-4: $0.03/1K input, $0.06/1K output):**
+
+```promql
+# Total cost estimate
+sum(openai_tokens_input_total) / 1000 * 0.03 +
+sum(openai_tokens_output_total) / 1000 * 0.06
+```
+
+**Find top 10 most active users:**
+
+```promql
+topk(10, 
+  sum by (user_id) (openai_tokens_total{user_id!=""})
+)
+```
 
 **Health Checks**:
 
