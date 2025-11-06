@@ -154,17 +154,17 @@ func isNetworkError(err error) bool {
 func calculateDelay(config RetryConfig, attempt int) time.Duration {
 	// Exponential backoff: base * 2^attempt
 	exponential := float64(config.BaseDelay) * math.Pow(2, float64(attempt))
-	
+
 	// Add jitter: random value between 0.5 and 1.5
 	jitter := 0.5 + rand.Float64() // nolint:gosec // not security critical
-	
+
 	delay := time.Duration(exponential * jitter)
-	
+
 	// Cap at max delay
 	if delay > config.MaxDelay {
 		delay = config.MaxDelay
 	}
-	
+
 	return delay
 }
 

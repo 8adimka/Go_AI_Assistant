@@ -13,7 +13,7 @@ type MockOpenAIClient struct {
 	ChatCompletionError    error
 
 	// Call tracking
-	ChatCompletionCallCount int
+	ChatCompletionCallCount  int
 	LastChatCompletionParams *openai.ChatCompletionNewParams
 }
 

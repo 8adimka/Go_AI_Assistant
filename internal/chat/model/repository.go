@@ -113,8 +113,8 @@ func (r *Repository) FindConversationsByPlatformAndChatID(ctx context.Context, p
 		SetLimit(1) // Only need the most recent active conversation
 
 	filter := bson.M{
-		"platform": platform,
-		"chat_id":  chatID,
+		"platform":  platform,
+		"chat_id":   chatID,
 		"is_active": true,
 	}
 

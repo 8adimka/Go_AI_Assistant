@@ -9,13 +9,13 @@ import (
 type Tool interface {
 	// Name returns the unique name of the tool
 	Name() string
-	
+
 	// Description returns a human-readable description of what the tool does
 	Description() string
-	
+
 	// Parameters returns the JSON schema for the tool's parameters
 	Parameters() map[string]interface{}
-	
+
 	// Execute runs the tool with the given arguments and returns the result
 	Execute(ctx context.Context, args map[string]interface{}) (string, error)
 }

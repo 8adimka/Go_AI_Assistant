@@ -9,12 +9,12 @@ import (
 
 // Common error types for the application
 var (
-	ErrNotFound      = errors.New("resource not found")
-	ErrInvalidInput  = errors.New("invalid input")
-	ErrUnauthorized  = errors.New("unauthorized")
-	ErrInternal      = errors.New("internal error")
-	ErrTimeout       = errors.New("operation timeout")
-	ErrUnavailable   = errors.New("service unavailable")
+	ErrNotFound     = errors.New("resource not found")
+	ErrInvalidInput = errors.New("invalid input")
+	ErrUnauthorized = errors.New("unauthorized")
+	ErrInternal     = errors.New("internal error")
+	ErrTimeout      = errors.New("operation timeout")
+	ErrUnavailable  = errors.New("service unavailable")
 )
 
 // Wrap wraps an error with additional context message
@@ -73,7 +73,7 @@ func ToTwirpErrorWithMeta(err error, meta map[string]string) error {
 	}
 
 	twirpErr := ToTwirpError(err)
-	
+
 	// Add metadata if it's a Twirp error
 	if te, ok := twirpErr.(twirp.Error); ok {
 		for key, value := range meta {

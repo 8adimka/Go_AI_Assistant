@@ -31,8 +31,8 @@ type WeatherData struct {
 
 // ForecastData represents weather forecast information
 type ForecastData struct {
-	Location string          `json:"location"`
-	Forecast []ForecastDay   `json:"forecast"`
+	Location string        `json:"location"`
+	Forecast []ForecastDay `json:"forecast"`
 }
 
 // ForecastDay represents daily forecast
@@ -83,28 +83,28 @@ func (w *WeatherAPIClient) GetCurrent(ctx context.Context, location string) (*We
 	}
 
 	url := fmt.Sprintf("%s/current.json?key=%s&q=%s&aqi=no", w.baseURL, w.apiKey, location)
-	
+
 	// Use retry logic for HTTP request
 	resp, err := retry.RetryWithResult(ctx, w.retryConfig, func() (*http.Response, error) {
 		req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create request: %w", err)
 		}
-		
+
 		resp, err := w.client.Do(req)
 		if err != nil {
 			return nil, fmt.Errorf("failed to make request: %w", err)
 		}
-		
+
 		// Check for retryable status codes
 		if resp.StatusCode >= 500 || resp.StatusCode == http.StatusTooManyRequests {
 			resp.Body.Close()
 			return nil, fmt.Errorf("retryable HTTP error: %s", resp.Status)
 		}
-		
+
 		return resp, nil
 	})
-	
+
 	if err != nil {
 		return nil, err
 	}
@@ -123,8 +123,8 @@ func (w *WeatherAPIClient) GetCurrent(ctx context.Context, location string) (*We
 			Country string `json:"country"`
 		} `json:"location"`
 		Current struct {
-			TempC      float64 `json:"temp_c"`
-			Condition  struct {
+			TempC     float64 `json:"temp_c"`
+			Condition struct {
 				Text string `json:"text"`
 			} `json:"condition"`
 			Humidity    int     `json:"humidity"`
@@ -172,28 +172,28 @@ func (w *WeatherAPIClient) GetForecast(ctx context.Context, location string, day
 	}
 
 	url := fmt.Sprintf("%s/forecast.json?key=%s&q=%s&days=%d&aqi=no", w.baseURL, w.apiKey, location, days)
-	
+
 	// Use retry logic for HTTP request
 	resp, err := retry.RetryWithResult(ctx, w.retryConfig, func() (*http.Response, error) {
 		req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create request: %w", err)
 		}
-		
+
 		resp, err := w.client.Do(req)
 		if err != nil {
 			return nil, fmt.Errorf("failed to make request: %w", err)
 		}
-		
+
 		// Check for retryable status codes
 		if resp.StatusCode >= 500 || resp.StatusCode == http.StatusTooManyRequests {
 			resp.Body.Close()
 			return nil, fmt.Errorf("retryable HTTP error: %s", resp.Status)
 		}
-		
+
 		return resp, nil
 	})
-	
+
 	if err != nil {
 		return nil, err
 	}
@@ -215,10 +215,10 @@ func (w *WeatherAPIClient) GetForecast(ctx context.Context, location string, day
 			Forecastday []struct {
 				Date string `json:"date"`
 				Day  struct {
-					MaxtempC      float64 `json:"maxtemp_c"`
-					MintempC      float64 `json:"mintemp_c"`
-					AvgtempC      float64 `json:"avgtemp_c"`
-					Condition     struct {
+					MaxtempC  float64 `json:"maxtemp_c"`
+					MintempC  float64 `json:"mintemp_c"`
+					AvgtempC  float64 `json:"avgtemp_c"`
+					Condition struct {
 						Text string `json:"text"`
 					} `json:"condition"`
 					MaxwindKph    float64 `json:"maxwind_kph"`

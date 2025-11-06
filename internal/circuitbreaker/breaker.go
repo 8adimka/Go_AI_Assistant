@@ -164,7 +164,7 @@ func (cb *CircuitBreaker) GetStateValue() int64 {
 func (cb *CircuitBreaker) Reset() {
 	cb.mu.Lock()
 	defer cb.mu.Unlock()
-	
+
 	cb.state = StateClosed
 	cb.failureCount = 0
 	cb.lastStateChangeTime = time.Now()

@@ -28,7 +28,7 @@ func NewWeatherService(provider WeatherProvider, cache *redisx.Cache) *WeatherSe
 func (s *WeatherService) GetCurrentWithCache(ctx context.Context, location string) (*WeatherData, error) {
 	// Generate cache key
 	cacheKey := s.cache.GenerateKey("weather:current", location)
-	
+
 	// Try to get from cache first
 	var cachedWeather WeatherData
 	if err := s.cache.Get(ctx, cacheKey, &cachedWeather); err == nil {
@@ -57,7 +57,7 @@ func (s *WeatherService) GetCurrentWithCache(ctx context.Context, location strin
 func (s *WeatherService) GetForecastWithCache(ctx context.Context, location string, days int) (*ForecastData, error) {
 	// Generate cache key
 	cacheKey := s.cache.GenerateKey("weather:forecast", fmt.Sprintf("%s:%d", location, days))
-	
+
 	// Try to get from cache first
 	var cachedForecast ForecastData
 	if err := s.cache.Get(ctx, cacheKey, &cachedForecast); err == nil {
@@ -93,7 +93,7 @@ func NewMockWeatherProvider() *MockWeatherProvider {
 // GetCurrent returns mock current weather data
 func (m *MockWeatherProvider) GetCurrent(ctx context.Context, location string) (*WeatherData, error) {
 	slog.WarnContext(ctx, "Using mock weather data", "location", location)
-	
+
 	return &WeatherData{
 		Location:    location,
 		Temperature: 20.0,
@@ -112,7 +112,7 @@ func (m *MockWeatherProvider) GetCurrent(ctx context.Context, location string) (
 // GetForecast returns mock forecast data
 func (m *MockWeatherProvider) GetForecast(ctx context.Context, location string, days int) (*ForecastData, error) {
 	slog.WarnContext(ctx, "Using mock forecast data", "location", location, "days", days)
-	
+
 	if days < 1 || days > 10 {
 		return nil, fmt.Errorf("days must be between 1 and 10")
 	}
@@ -143,17 +143,17 @@ func (m *MockWeatherProvider) GetForecast(ctx context.Context, location string, 
 
 // FallbackWeatherService provides weather data with fallback to mock data
 type FallbackWeatherService struct {
-	primaryProvider WeatherProvider
+	primaryProvider  WeatherProvider
 	fallbackProvider WeatherProvider
-	cache           *redisx.Cache
+	cache            *redisx.Cache
 }
 
 // NewFallbackWeatherService creates a weather service with fallback
 func NewFallbackWeatherService(primary WeatherProvider, fallback WeatherProvider, cache *redisx.Cache) *FallbackWeatherService {
 	return &FallbackWeatherService{
-		primaryProvider: primary,
+		primaryProvider:  primary,
 		fallbackProvider: fallback,
-		cache:           cache,
+		cache:            cache,
 	}
 }
 
@@ -165,7 +165,7 @@ func (f *FallbackWeatherService) GetCurrentWithFallback(ctx context.Context, loc
 		return weather, nil
 	}
 
-	slog.ErrorContext(ctx, "Primary weather provider failed, using fallback", 
+	slog.ErrorContext(ctx, "Primary weather provider failed, using fallback",
 		"location", location, "error", err)
 
 	// Fall back to mock provider
@@ -180,7 +180,7 @@ func (f *FallbackWeatherService) GetForecastWithFallback(ctx context.Context, lo
 		return forecast, nil
 	}
 
-	slog.ErrorContext(ctx, "Primary forecast provider failed, using fallback", 
+	slog.ErrorContext(ctx, "Primary forecast provider failed, using fallback",
 		"location", location, "days", days, "error", err)
 
 	// Fall back to mock provider
@@ -190,7 +190,7 @@ func (f *FallbackWeatherService) GetForecastWithFallback(ctx context.Context, lo
 // Helper function to create weather service with all features
 func CreateWeatherService(apiKey string, cache *redisx.Cache) *FallbackWeatherService {
 	var primaryProvider WeatherProvider
-	
+
 	if apiKey != "" {
 		primaryProvider = NewWeatherAPIClient(apiKey)
 	} else {
@@ -199,6 +199,6 @@ func CreateWeatherService(apiKey string, cache *redisx.Cache) *FallbackWeatherSe
 	}
 
 	fallbackProvider := NewMockWeatherProvider()
-	
+
 	return NewFallbackWeatherService(primaryProvider, fallbackProvider, cache)
 }

@@ -28,7 +28,7 @@ func (d *DateTimeTool) Description() string {
 // Parameters returns the JSON schema for parameters
 func (d *DateTimeTool) Parameters() map[string]interface{} {
 	return map[string]interface{}{
-		"type": "object",
+		"type":       "object",
 		"properties": map[string]interface{}{},
 	}
 }

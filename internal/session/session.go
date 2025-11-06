@@ -40,22 +40,22 @@ func NewManager(cache *redisx.Cache, ttl time.Duration, repo *model.Repository) 
 // GetSession retrieves a session from Redis or recovers from MongoDB
 func (m *Manager) GetSession(ctx context.Context, platform, chatID string) (*Session, error) {
 	key := m.generateSessionKey(platform, chatID)
-	
+
 	// Try Redis first
 	var session Session
 	if err := m.cache.Get(ctx, key, &session); err == nil {
 		// Update TTL on access (sliding window)
 		m.cache.Set(ctx, key, session)
-		slog.DebugContext(ctx, "Session found in Redis", 
-			"platform", platform, 
+		slog.DebugContext(ctx, "Session found in Redis",
+			"platform", platform,
 			"chat_id", chatID,
 			"conversation_id", session.ConversationID)
 		return &session, nil
 	}
-	
+
 	// Redis miss - try MongoDB recovery
-	slog.InfoContext(ctx, "Session not found in Redis, attempting MongoDB recovery", 
-		"platform", platform, 
+	slog.InfoContext(ctx, "Session not found in Redis, attempting MongoDB recovery",
+		"platform", platform,
 		"chat_id", chatID)
 	return m.recoverSessionFromMongoDB(ctx, platform, chatID)
 }
@@ -77,19 +77,19 @@ func (m *Manager) GetOrCreateSession(ctx context.Context, platform, userID, chat
 	// Try to get existing session
 	session, err := m.GetSession(ctx, platform, chatID)
 	if err == nil {
-		slog.DebugContext(ctx, "Found existing session", 
-			"platform", platform, 
+		slog.DebugContext(ctx, "Found existing session",
+			"platform", platform,
 			"chat_id", chatID,
 			"conversation_id", session.ConversationID)
 		return session.ConversationID, nil
 	}
-	
+
 	// No session found - create a new conversation
-	slog.InfoContext(ctx, "Creating new session", 
-		"platform", platform, 
+	slog.InfoContext(ctx, "Creating new session",
+		"platform", platform,
 		"user_id", userID,
 		"chat_id", chatID)
-	
+
 	// Create a new conversation
 	conversation := &model.Conversation{
 		ID:           primitive.NewObjectID(),
@@ -109,14 +109,14 @@ func (m *Manager) GetOrCreateSession(ctx context.Context, platform, userID, chat
 			UpdatedAt: time.Now(),
 		}},
 	}
-	
+
 	// Generate title and reply would be handled by the assistant later
 	// For now, just create the conversation
-	
+
 	if err := m.repo.CreateConversation(ctx, conversation); err != nil {
 		return "", fmt.Errorf("failed to create conversation: %w", err)
 	}
-	
+
 	// Create and store session
 	newSession := &Session{
 		ConversationID: conversation.ID.Hex(),
@@ -125,20 +125,20 @@ func (m *Manager) GetOrCreateSession(ctx context.Context, platform, userID, chat
 		ChatID:         chatID,
 		LastActivity:   time.Now(),
 	}
-	
+
 	if err := m.SetSession(ctx, platform, chatID, newSession); err != nil {
-		slog.WarnContext(ctx, "Failed to store session in Redis", 
-			"platform", platform, 
+		slog.WarnContext(ctx, "Failed to store session in Redis",
+			"platform", platform,
 			"chat_id", chatID,
 			"error", err)
 		// Continue anyway - we have the conversation in MongoDB
 	}
-	
-	slog.InfoContext(ctx, "Created new session", 
-		"platform", platform, 
+
+	slog.InfoContext(ctx, "Created new session",
+		"platform", platform,
 		"chat_id", chatID,
 		"conversation_id", conversation.ID.Hex())
-	
+
 	return conversation.ID.Hex(), nil
 }
 
@@ -147,20 +147,20 @@ func (m *Manager) recoverSessionFromMongoDB(ctx context.Context, platform, chatI
 	// Find most recent active conversation for this platform+chatID
 	conversations, err := m.repo.FindConversationsByPlatformAndChatID(ctx, platform, chatID)
 	if err != nil {
-		slog.ErrorContext(ctx, "Failed to query conversations for session recovery", 
-			"platform", platform, 
+		slog.ErrorContext(ctx, "Failed to query conversations for session recovery",
+			"platform", platform,
 			"chat_id", chatID,
 			"error", err)
 		return nil, fmt.Errorf("failed to query conversations: %w", err)
 	}
-	
+
 	if len(conversations) == 0 {
-		slog.DebugContext(ctx, "No conversations found for session recovery", 
-			"platform", platform, 
+		slog.DebugContext(ctx, "No conversations found for session recovery",
+			"platform", platform,
 			"chat_id", chatID)
 		return nil, fmt.Errorf("no session found")
 	}
-	
+
 	// Use most recent active conversation
 	latestConv := conversations[0]
 	session := &Session{
@@ -170,22 +170,22 @@ func (m *Manager) recoverSessionFromMongoDB(ctx context.Context, platform, chatI
 		ChatID:         chatID,
 		LastActivity:   time.Now(),
 	}
-	
+
 	// Restore to Redis
 	key := m.generateSessionKey(platform, chatID)
 	if err := m.cache.Set(ctx, key, session); err != nil {
-		slog.WarnContext(ctx, "Failed to restore session to Redis", 
-			"platform", platform, 
+		slog.WarnContext(ctx, "Failed to restore session to Redis",
+			"platform", platform,
 			"chat_id", chatID,
 			"error", err)
 		// Continue anyway - we have the session from MongoDB
 	}
-	
-	slog.InfoContext(ctx, "Session recovered from MongoDB", 
-		"platform", platform, 
+
+	slog.InfoContext(ctx, "Session recovered from MongoDB",
+		"platform", platform,
 		"chat_id", chatID,
 		"conversation_id", session.ConversationID)
-	
+
 	return session, nil
 }
 

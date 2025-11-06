@@ -111,7 +111,7 @@ func (s *Server) ContinueConversation(ctx context.Context, req *pb.ContinueConve
 			// Use Session Manager to find or create conversation
 			conversationID, err := s.sessionManager.GetOrCreateSession(ctx, platform, userID, chatID, req.GetMessage())
 			if err != nil {
-				slog.ErrorContext(ctx, "Failed to get or create session", 
+				slog.ErrorContext(ctx, "Failed to get or create session",
 					"platform", platform, "user_id", userID, "chat_id", chatID, "error", err)
 				return nil, twirp.InternalErrorWith(err)
 			}
@@ -145,7 +145,7 @@ func (s *Server) continueExistingConversation(ctx context.Context, conversationI
 	// Check if we need to summarize (more than 20 messages)
 	if len(conversation.Messages) >= 20 && conversation.Summary == "" {
 		conversation.Summary = s.summarizeConversation(ctx, conversation)
-		slog.InfoContext(ctx, "Conversation summarized", 
+		slog.InfoContext(ctx, "Conversation summarized",
 			"conversation_id", conversation.ID.Hex(),
 			"message_count", len(conversation.Messages))
 	}
@@ -215,13 +215,13 @@ func (s *Server) summarizeConversation(ctx context.Context, conversation *model.
 	// Basic summarization - extract key topics from first few messages
 	// In production, this would use AI to generate a proper summary
 	summary := "Conversation summary: "
-	
+
 	// Take first 5 messages to create a basic summary
 	count := 5
 	if len(conversation.Messages) < count {
 		count = len(conversation.Messages)
 	}
-	
+
 	for i := 0; i < count; i++ {
 		msg := conversation.Messages[i]
 		if msg.Role == model.RoleUser {
@@ -234,6 +234,6 @@ func (s *Server) summarizeConversation(ctx context.Context, conversation *model.
 			}
 		}
 	}
-	
+
 	return strings.TrimSpace(summary)
 }

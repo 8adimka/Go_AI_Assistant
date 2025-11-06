@@ -74,6 +74,7 @@ backups/
 /dist/
 /tmp/
 /server
+/go-ai-assistant
 *.exe
 *.exe~
 *.dll
