@@ -18,27 +18,30 @@ import (
 )
 
 type Assistant struct {
-	cli           openai.Client
-	cache         *redisx.Cache
-	toolRegistry  *registry.ToolRegistry
-	retryConfig   retry.RetryConfig
+	cli          openai.Client
+	cache        *redisx.Cache
+	toolRegistry *registry.ToolRegistry
+	retryConfig  retry.RetryConfig
 }
 
 func New() *Assistant {
 	// Load configuration
 	cfg := config.Load()
 	redisClient := redisx.MustConnect(cfg.RedisAddr)
-	cache := redisx.NewCache(redisClient, 24*time.Hour) // Cache for 24 hours
-	
+
+	// Use configurable cache TTL from config
+	cacheTTL := time.Duration(cfg.CacheTTLHours) * time.Hour
+	cache := redisx.NewCache(redisClient, cacheTTL)
+
 	// Create tool registry with all available tools
 	toolFactory := factory.NewFactory(cfg)
 	toolRegistry := toolFactory.CreateAllTools()
-	
+
 	return &Assistant{
-		cli:           openai.NewClient(),
-		cache:         cache,
-		toolRegistry:  toolRegistry,
-		retryConfig:   retry.ConfigFromAppConfig(cfg),
+		cli:          openai.NewClient(),
+		cache:        cache,
+		toolRegistry: toolRegistry,
+		retryConfig:  retry.ConfigFromAppConfig(cfg),
 	}
 }
 
@@ -52,7 +55,7 @@ func (a *Assistant) Title(ctx context.Context, conv *model.Conversation) (string
 	// Try to get from cache first
 	userMessage := conv.Messages[0].Content
 	cacheKey := a.cache.GenerateKey("title", userMessage)
-	
+
 	var cachedTitle string
 	if err := a.cache.Get(ctx, cacheKey, &cachedTitle); err == nil {
 		slog.InfoContext(ctx, "Title retrieved from cache", "conversation_id", conv.ID)
@@ -86,8 +89,8 @@ Generate title for:`
 	// Use retry logic for OpenAI API call
 	resp, err := retry.RetryWithResult(ctx, a.retryConfig, func() (*openai.ChatCompletion, error) {
 		return a.cli.Chat.Completions.New(ctx, openai.ChatCompletionNewParams{
-			Model:    openai.ChatModelGPT4Turbo, // Faster model for titles
-			Messages: msgs,
+			Model:     openai.ChatModelGPT4Turbo, // Faster model for titles
+			Messages:  msgs,
 			MaxTokens: openai.Int(30), // Limit tokens for brevity
 		})
 	})
@@ -116,18 +119,18 @@ func (a *Assistant) formatTitle(title string) string {
 	// Remove extra spaces and newlines
 	title = strings.TrimSpace(title)
 	title = strings.ReplaceAll(title, "\n", " ")
-	
+
 	// Remove quotes and other special characters
 	title = strings.Trim(title, " \"'`-")
-	
+
 	// Limit length
 	if len(title) > 60 {
 		title = title[:60]
 	}
-	
+
 	// Convert to Title Case
 	title = a.toTitleCase(title)
-	
+
 	return title
 }
 
@@ -142,7 +145,7 @@ func (a *Assistant) toTitleCase(s string) string {
 				"for": true, "nor": true, "on": true, "at": true, "to": true, "by": true,
 				"in": true, "of": true, "with": true,
 			}
-			
+
 			// First word is always capitalized
 			if i == 0 || !shortWords[strings.ToLower(word)] {
 				words[i] = strings.ToUpper(word[:1]) + strings.ToLower(word[1:])

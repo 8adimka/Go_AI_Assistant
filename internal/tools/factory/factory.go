@@ -31,9 +31,10 @@ func NewFactory(cfg *config.Config) *Factory {
 func (f *Factory) CreateAllTools() *registry.ToolRegistry {
 	slog.Info("Creating and registering tools")
 
-	// Create Redis cache for weather service
+	// Create Redis cache for weather service with configurable TTL
 	redisClient := redisx.MustConnect(f.config.RedisAddr)
-	cache := redisx.NewCache(redisClient, 24*time.Hour) // 24 hours cache
+	cacheTTL := time.Duration(f.config.CacheTTLHours) * time.Hour
+	cache := redisx.NewCache(redisClient, cacheTTL)
 
 	// Create weather service with fallback
 	weatherService := weather.CreateWeatherService(f.config.WeatherApiKey, cache)

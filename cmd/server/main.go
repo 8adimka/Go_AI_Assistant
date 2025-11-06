@@ -61,17 +61,22 @@ func main() {
 	repo := model.New(mongo)
 	assist := assistant.New()
 
-	// Create Redis cache for session management
-	redisCache := redisx.NewCache(redisClient, 30*time.Minute) // 30 minutes TTL
+	// Create Redis cache for session management with configurable TTL
+	sessionTTL := time.Duration(cfg.SessionTTLMinutes) * time.Minute
+	redisCache := redisx.NewCache(redisClient, sessionTTL)
 
 	// Create session manager
-	sessionManager := session.NewManager(redisCache, 30*time.Minute, repo)
+	sessionManager := session.NewManager(redisCache, sessionTTL, repo)
 
 	server := chat.NewServer(repo, assist, sessionManager)
+
+	// Initialize rate limiter with configuration
+	rateLimiter := httpx.NewRateLimiter(cfg.APIRateLimitRPS, cfg.APIRateLimitBurst)
 
 	// Configure handler
 	handler := mux.NewRouter()
 	handler.Use(
+		rateLimiter.Middleware(), // Rate limiting first!
 		appMetrics.HTTPMetricsMiddleware(),
 		httpx.OTelMiddleware(),
 		httpx.Logger(),
@@ -83,8 +88,15 @@ func main() {
 	handler.HandleFunc("/health", healthChecker.HealthHandler)
 	handler.HandleFunc("/ready", healthChecker.ReadyHandler)
 
-	// Metrics endpoint - Prometheus metrics
-	handler.Handle("/metrics", promhttp.Handler())
+	// Metrics endpoint - Prometheus metrics (protected with API key)
+	if cfg.APIKey != "" {
+		auth := httpx.NewAPIKeyAuth(cfg.APIKey)
+		handler.Handle("/metrics", auth.Middleware()(promhttp.Handler()))
+		slog.Info("Metrics endpoint protected with API key")
+	} else {
+		handler.Handle("/metrics", promhttp.Handler())
+		slog.Warn("Metrics endpoint is NOT protected - set API_KEY in production!")
+	}
 
 	handler.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		_, _ = fmt.Fprint(w, "Hi, my name is Clippy!")
