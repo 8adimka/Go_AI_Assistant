@@ -8,6 +8,7 @@ import (
 
 	"github.com/8adimka/Go_AI_Assistant/internal/chat/model"
 	"github.com/8adimka/Go_AI_Assistant/internal/pb"
+	"github.com/8adimka/Go_AI_Assistant/internal/session"
 	"github.com/twitchtv/twirp"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 )
@@ -20,20 +21,28 @@ type Assistant interface {
 }
 
 type Server struct {
-	repo   *model.Repository
-	assist Assistant
+	repo           *model.Repository
+	assist         Assistant
+	sessionManager *session.Manager
 }
 
-func NewServer(repo *model.Repository, assist Assistant) *Server {
-	return &Server{repo: repo, assist: assist}
+func NewServer(repo *model.Repository, assist Assistant, sessionManager *session.Manager) *Server {
+	return &Server{
+		repo:           repo,
+		assist:         assist,
+		sessionManager: sessionManager,
+	}
 }
 
 func (s *Server) StartConversation(ctx context.Context, req *pb.StartConversationRequest) (*pb.StartConversationResponse, error) {
 	conversation := &model.Conversation{
-		ID:        primitive.NewObjectID(),
-		Title:     "Untitled conversation",
-		CreatedAt: time.Now(),
-		UpdatedAt: time.Now(),
+		ID:           primitive.NewObjectID(),
+		Title:        "Untitled conversation",
+		CreatedAt:    time.Now(),
+		UpdatedAt:    time.Now(),
+		Platform:     "api", // default for direct API calls
+		IsActive:     true,
+		LastActivity: time.Now(),
 		Messages: []*model.Message{{
 			ID:        primitive.NewObjectID(),
 			Role:      model.RoleUser,
@@ -81,24 +90,70 @@ func (s *Server) StartConversation(ctx context.Context, req *pb.StartConversatio
 }
 
 func (s *Server) ContinueConversation(ctx context.Context, req *pb.ContinueConversationRequest) (*pb.ContinueConversationResponse, error) {
-	if req.GetConversationId() == "" {
-		return nil, twirp.RequiredArgumentError("conversation_id")
-	}
-
 	if strings.TrimSpace(req.GetMessage()) == "" {
 		return nil, twirp.RequiredArgumentError("message")
 	}
 
-	conversation, err := s.repo.DescribeConversation(ctx, req.GetConversationId())
+	// OPTION 1: Direct conversation_id (existing flow)
+	if req.GetConversationId() != "" {
+		return s.continueExistingConversation(ctx, req.GetConversationId(), req.GetMessage())
+	}
+
+	// OPTION 2: Session-based (new flow) - use session_metadata
+	// Extract session metadata from the request
+	sessionMetadata := req.GetSessionMetadata()
+	if sessionMetadata != nil {
+		platform := sessionMetadata.GetPlatform()
+		userID := sessionMetadata.GetUserId()
+		chatID := sessionMetadata.GetChatId()
+
+		if platform != "" && userID != "" && chatID != "" {
+			// Use Session Manager to find or create conversation
+			conversationID, err := s.sessionManager.GetOrCreateSession(ctx, platform, userID, chatID, req.GetMessage())
+			if err != nil {
+				slog.ErrorContext(ctx, "Failed to get or create session", 
+					"platform", platform, "user_id", userID, "chat_id", chatID, "error", err)
+				return nil, twirp.InternalErrorWith(err)
+			}
+
+			// Continue with the found/created conversation
+			return s.continueExistingConversation(ctx, conversationID, req.GetMessage())
+		}
+	}
+
+	// If no conversation_id and no valid session_metadata, return error
+	return nil, twirp.RequiredArgumentError("conversation_id or session_metadata")
+}
+
+// continueExistingConversation handles the actual conversation continuation logic
+func (s *Server) continueExistingConversation(ctx context.Context, conversationID, message string) (*pb.ContinueConversationResponse, error) {
+	if conversationID == "" {
+		// If no conversation ID provided, we need to handle this case
+		// For now, we'll return an error, but in production this would create a new conversation
+		return nil, twirp.RequiredArgumentError("conversation_id")
+	}
+
+	conversation, err := s.repo.DescribeConversation(ctx, conversationID)
 	if err != nil {
 		return nil, err
 	}
 
+	// Update activity tracking
 	conversation.UpdatedAt = time.Now()
+	conversation.LastActivity = time.Now()
+
+	// Check if we need to summarize (more than 20 messages)
+	if len(conversation.Messages) >= 20 && conversation.Summary == "" {
+		conversation.Summary = s.summarizeConversation(ctx, conversation)
+		slog.InfoContext(ctx, "Conversation summarized", 
+			"conversation_id", conversation.ID.Hex(),
+			"message_count", len(conversation.Messages))
+	}
+
 	conversation.Messages = append(conversation.Messages, &model.Message{
 		ID:        primitive.NewObjectID(),
 		Role:      model.RoleUser,
-		Content:   req.GetMessage(),
+		Content:   message,
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
 	})
@@ -153,4 +208,32 @@ func (s *Server) DescribeConversation(ctx context.Context, req *pb.DescribeConve
 	}
 
 	return &pb.DescribeConversationResponse{Conversation: conversation.Proto()}, nil
+}
+
+// summarizeConversation creates a summary of the conversation for context management
+func (s *Server) summarizeConversation(ctx context.Context, conversation *model.Conversation) string {
+	// Basic summarization - extract key topics from first few messages
+	// In production, this would use AI to generate a proper summary
+	summary := "Conversation summary: "
+	
+	// Take first 5 messages to create a basic summary
+	count := 5
+	if len(conversation.Messages) < count {
+		count = len(conversation.Messages)
+	}
+	
+	for i := 0; i < count; i++ {
+		msg := conversation.Messages[i]
+		if msg.Role == model.RoleUser {
+			// Extract first few words from user messages
+			words := strings.Fields(msg.Content)
+			if len(words) > 3 {
+				summary += strings.Join(words[:3], " ") + "... "
+			} else {
+				summary += msg.Content + " "
+			}
+		}
+	}
+	
+	return strings.TrimSpace(summary)
 }

@@ -9,11 +9,19 @@ import (
 )
 
 type Conversation struct {
-	ID        primitive.ObjectID `bson:"_id"`
-	Title     string             `bson:"subject"`
-	CreatedAt time.Time          `bson:"created_at"`
-	UpdatedAt time.Time          `bson:"updated_at"`
-	Messages  []*Message         `bson:"messages"`
+	ID           primitive.ObjectID `bson:"_id"`
+	Title        string             `bson:"subject"`
+	CreatedAt    time.Time          `bson:"created_at"`
+	UpdatedAt    time.Time          `bson:"updated_at"`
+	Messages     []*Message         `bson:"messages"`
+	
+	// New fields for conversation management
+	Platform     string    `bson:"platform,omitempty"`   // telegram, web, api
+	UserID       string    `bson:"user_id,omitempty"`
+	ChatID       string    `bson:"chat_id,omitempty"`
+	IsActive     bool      `bson:"is_active"`            // default: true
+	Summary      string    `bson:"summary,omitempty"`
+	LastActivity time.Time `bson:"last_activity"`        // default: time.Now()
 }
 
 func (c *Conversation) Proto() *pb.Conversation {

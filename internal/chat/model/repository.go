@@ -104,3 +104,40 @@ func (r *Repository) DeleteConversation(ctx context.Context, id string) error {
 
 	return err
 }
+
+// FindConversationsByPlatformAndChatID finds conversations by platform and chat ID
+// Used for session recovery when Redis is unavailable
+func (r *Repository) FindConversationsByPlatformAndChatID(ctx context.Context, platform, chatID string) ([]*Conversation, error) {
+	opts := options.Find().
+		SetSort(bson.D{{Key: "last_activity", Value: -1}}).
+		SetLimit(1) // Only need the most recent active conversation
+
+	filter := bson.M{
+		"platform": platform,
+		"chat_id":  chatID,
+		"is_active": true,
+	}
+
+	cursor, err := r.conn.Collection(conversationCollection).Find(ctx, filter, opts)
+	if err != nil {
+		return nil, err
+	}
+	defer func() {
+		_ = cursor.Close(ctx)
+	}()
+
+	var conversations []*Conversation
+	for cursor.Next(ctx) {
+		var c Conversation
+		if err := cursor.Decode(&c); err != nil {
+			return nil, err
+		}
+		conversations = append(conversations, &c)
+	}
+
+	if err := cursor.Err(); err != nil {
+		return nil, err
+	}
+
+	return conversations, nil
+}

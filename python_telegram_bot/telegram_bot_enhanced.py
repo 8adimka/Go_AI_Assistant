@@ -41,6 +41,7 @@ REQUEST_TIMEOUT = 30
 class TelegramBotEnhanced:
     def __init__(self):
         self.application = None
+        # Stateless client - server manages sessions via session_metadata
 
     def _make_api_request(self, method: str, endpoint: str, **kwargs) -> Optional[dict]:
         """Makes API request with retry logic"""
@@ -103,53 +104,48 @@ class TelegramBotEnhanced:
     async def handle_message(
         self, update: Update, context: ContextTypes.DEFAULT_TYPE
     ) -> None:
-        """Handles regular messages"""
+        """Handles regular messages with conversation memory"""
         if not update.message:
             return
 
         message_text = update.message.text
+        chat_id = update.message.chat_id
+        user_id = update.effective_user.id
 
         # Send typing indicator
         await self._send_typing_action(update)
 
-        # Send request to our Go system via Twirp API
-        payload = {"message": message_text}
+        # ALWAYS use ContinueConversation with session_metadata
+        # Server manages session mapping internally
+        payload = {
+            "message": message_text,
+            "session_metadata": {
+                "platform": "telegram",
+                "user_id": str(user_id),
+                "chat_id": str(chat_id),
+            },
+        }
 
         result = self._make_api_request(
             "POST",
-            "/twirp/acai.chat.ChatService/StartConversation",
+            "/twirp/acai.chat.ChatService/ContinueConversation",
             json=payload,
             headers={"Content-Type": "application/json"},
         )
 
-        if not result:
-            await update.message.reply_text(
-                "❌ Error connecting to AI service.\n"
-                "Make sure the Go server is running on localhost:8080"
-            )
-            return
-
-        if "reply" in result:
+        if result and "reply" in result:
             reply = result["reply"]
-            conversation_id = result.get("conversation_id", "N/A")
-            title = result.get("title", "No title")
-
-            # Format response
             response_text = f"🤖 {reply}"
-
-            # Split long responses into parts
-            if len(response_text) > 4000:
-                for i in range(0, len(response_text), 4000):
-                    await update.message.reply_text(response_text[i : i + 4000])
-            else:
-                await update.message.reply_text(response_text)
-
-            # Log conversation information
-            logger.info(f"Conversation ID: {conversation_id}, Title: {title}")
-
+            await update.message.reply_text(response_text)
+            conversation_id = result.get("conversation_id", "unknown")
+            logger.info(f"Continued conversation: {conversation_id}")
         else:
-            error_msg = result.get("error", "Unknown error")
+            # If continue fails, provide error message
+            error_msg = (
+                result.get("error", "Unknown error") if result else "Connection error"
+            )
             await update.message.reply_text(f"❌ AI Error: {error_msg}")
+            logger.error(f"Failed to continue conversation: {error_msg}")
 
     async def status(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Shows current system status"""
@@ -196,12 +192,22 @@ class TelegramBotEnhanced:
 
         await self._send_typing_action(update)
 
-        # Use our system to get weather
-        payload = {"message": f"What is the weather like in {location}?"}
+        chat_id = update.message.chat_id
+        user_id = update.effective_user.id
+
+        # Use our system to get weather with session_metadata
+        payload = {
+            "message": f"What is the weather like in {location}?",
+            "session_metadata": {
+                "platform": "telegram",
+                "user_id": str(user_id),
+                "chat_id": str(chat_id),
+            },
+        }
 
         result = self._make_api_request(
             "POST",
-            "/twirp/acai.chat.ChatService/StartConversation",
+            "/twirp/acai.chat.ChatService/ContinueConversation",
             json=payload,
             headers={"Content-Type": "application/json"},
         )

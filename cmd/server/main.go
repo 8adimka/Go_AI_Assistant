@@ -21,6 +21,7 @@ import (
 	"github.com/8adimka/Go_AI_Assistant/internal/otel"
 	"github.com/8adimka/Go_AI_Assistant/internal/pb"
 	"github.com/8adimka/Go_AI_Assistant/internal/redisx"
+	"github.com/8adimka/Go_AI_Assistant/internal/session"
 	"github.com/gorilla/mux"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/twitchtv/twirp"
@@ -60,7 +61,13 @@ func main() {
 	repo := model.New(mongo)
 	assist := assistant.New()
 
-	server := chat.NewServer(repo, assist)
+	// Create Redis cache for session management
+	redisCache := redisx.NewCache(redisClient, 30*time.Minute) // 30 minutes TTL
+
+	// Create session manager
+	sessionManager := session.NewManager(redisCache, 30*time.Minute, repo)
+
+	server := chat.NewServer(repo, assist, sessionManager)
 
 	// Configure handler
 	handler := mux.NewRouter()

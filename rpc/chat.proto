@@ -43,6 +43,7 @@ message Conversation {
 
 message StartConversationRequest {
   string message = 1;
+  SessionMetadata session_metadata = 2;  // NEW optional field
 }
 
 message StartConversationResponse {
@@ -52,8 +53,15 @@ message StartConversationResponse {
 }
 
 message ContinueConversationRequest {
-  string conversation_id = 1;
-  string message = 2;
+  string conversation_id = 1;  // EXISTING field
+  string message = 2;          // EXISTING field
+  SessionMetadata session_metadata = 3;  // NEW optional field
+}
+
+message SessionMetadata {
+  string platform = 1;  // "telegram", "web", "api"
+  string user_id = 2;
+  string chat_id = 3;
 }
 
 message ContinueConversationResponse {
