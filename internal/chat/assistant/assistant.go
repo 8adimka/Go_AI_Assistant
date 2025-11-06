@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"strings"
 	"time"
@@ -19,11 +20,12 @@ import (
 )
 
 type Assistant struct {
-	cli          openai.Client
-	cache        *redisx.Cache
-	toolRegistry *registry.ToolRegistry
-	retryConfig  retry.RetryConfig
-	metrics      *metrics.Metrics
+	cli           openai.Client
+	cache         *redisx.Cache
+	toolRegistry  *registry.ToolRegistry
+	retryConfig   retry.RetryConfig
+	metrics       *metrics.Metrics
+	promptManager *PromptManager
 }
 
 func New(appMetrics *metrics.Metrics) *Assistant {
@@ -39,12 +41,16 @@ func New(appMetrics *metrics.Metrics) *Assistant {
 	toolFactory := factory.NewFactory(cfg)
 	toolRegistry := toolFactory.CreateAllTools()
 
+	// Create prompt manager
+	promptManager := NewPromptManager(cfg)
+
 	return &Assistant{
-		cli:          openai.NewClient(),
-		cache:        cache,
-		toolRegistry: toolRegistry,
-		retryConfig:  retry.ConfigFromAppConfig(cfg),
-		metrics:      appMetrics,
+		cli:           openai.NewClient(),
+		cache:         cache,
+		toolRegistry:  toolRegistry,
+		retryConfig:   retry.ConfigFromAppConfig(cfg),
+		metrics:       appMetrics,
+		promptManager: promptManager,
 	}
 }
 
@@ -74,22 +80,16 @@ func (a *Assistant) Title(ctx context.Context, conv *model.Conversation) (string
 		slog.WarnContext(ctx, "Cache error, proceeding without cache", "error", err)
 	}
 
-	// Improved prompt for title generation
-	titlePrompt := `Generate a very concise and descriptive title for this conversation. 
-The title should:
-- Be 3-7 words maximum
-- Focus on the main topic or question
-- Be in title case (capitalize main words)
-- Avoid answering the question, just describe the topic
-- No special characters, emojis, or punctuation at the end
-- Maximum 60 characters
-
-Examples:
-- User: "What's the weather in Barcelona?" → "Weather in Barcelona"
-- User: "Tell me about machine learning" → "Machine Learning Overview"
-- User: "How to cook pasta carbonara" → "Pasta Carbonara Recipe"
-
-Generate title for:`
+	// Get title generation prompt from prompt manager
+	titlePrompt, err := a.promptManager.GetPromptWithPlatform(ctx, model.PromptNameTitleGeneration, conv.Platform, conv.UserID)
+	if err != nil {
+		slog.WarnContext(ctx, "Failed to get title prompt, using fallback", "error", err)
+		// Use fallback prompt from manager
+		titlePrompt, err = a.promptManager.GetFallbackPrompt(model.PromptNameTitleGeneration)
+		if err != nil {
+			return "", fmt.Errorf("failed to get fallback title prompt: %w", err)
+		}
+	}
 
 	msgs := []openai.ChatCompletionMessageParamUnion{
 		openai.SystemMessage(titlePrompt),
@@ -205,8 +205,19 @@ func (a *Assistant) Reply(ctx context.Context, conv *model.Conversation) (string
 		"messages_count", len(conv.Messages),
 	)
 
+	// Get system prompt from prompt manager
+	systemPrompt, err := a.promptManager.GetPromptWithPlatform(ctx, model.PromptNameSystemPrompt, conv.Platform, conv.UserID)
+	if err != nil {
+		slog.WarnContext(ctx, "Failed to get system prompt, using fallback", "error", err)
+		// Use fallback prompt from manager
+		systemPrompt, err = a.promptManager.GetFallbackPrompt(model.PromptNameSystemPrompt)
+		if err != nil {
+			return "", fmt.Errorf("failed to get fallback system prompt: %w", err)
+		}
+	}
+
 	msgs := []openai.ChatCompletionMessageParamUnion{
-		openai.SystemMessage("You are a helpful, concise AI assistant. Provide accurate, safe, and clear responses."),
+		openai.SystemMessage(systemPrompt),
 	}
 
 	for _, m := range conv.Messages {
