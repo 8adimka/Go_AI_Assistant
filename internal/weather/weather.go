@@ -9,6 +9,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/8adimka/Go_AI_Assistant/internal/config"
+	"github.com/8adimka/Go_AI_Assistant/internal/retry"
 	"golang.org/x/time/rate"
 )
 
@@ -58,15 +60,18 @@ type WeatherAPIClient struct {
 	apiKey      string
 	baseURL     string
 	rateLimiter *rate.Limiter
+	retryConfig retry.RetryConfig
 }
 
 // NewWeatherAPIClient creates a new WeatherAPI client with rate limiting
 func NewWeatherAPIClient(apiKey string) *WeatherAPIClient {
+	cfg := config.Load()
 	return &WeatherAPIClient{
 		client:      &http.Client{Timeout: 10 * time.Second},
 		apiKey:      apiKey,
 		baseURL:     "http://api.weatherapi.com/v1",
 		rateLimiter: rate.NewLimiter(rate.Every(time.Minute), 10), // 10 requests per minute
+		retryConfig: retry.ConfigFromAppConfig(cfg),
 	}
 }
 
@@ -79,21 +84,33 @@ func (w *WeatherAPIClient) GetCurrent(ctx context.Context, location string) (*We
 
 	url := fmt.Sprintf("%s/current.json?key=%s&q=%s&aqi=no", w.baseURL, w.apiKey, location)
 	
-	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	// Use retry logic for HTTP request
+	resp, err := retry.RetryWithResult(ctx, w.retryConfig, func() (*http.Response, error) {
+		req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create request: %w", err)
+		}
+		
+		resp, err := w.client.Do(req)
+		if err != nil {
+			return nil, fmt.Errorf("failed to make request: %w", err)
+		}
+		
+		// Check for retryable status codes
+		if resp.StatusCode >= 500 || resp.StatusCode == http.StatusTooManyRequests {
+			resp.Body.Close()
+			return nil, fmt.Errorf("retryable HTTP error: %s", resp.Status)
+		}
+		
+		return resp, nil
+	})
+	
 	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
-	}
-
-	resp, err := w.client.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("failed to make request: %w", err)
+		return nil, err
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		if resp.StatusCode == http.StatusTooManyRequests {
-			return nil, fmt.Errorf("rate limit exceeded for WeatherAPI")
-		}
 		if resp.StatusCode == http.StatusBadRequest {
 			return nil, fmt.Errorf("invalid location: %s", location)
 		}
@@ -156,21 +173,33 @@ func (w *WeatherAPIClient) GetForecast(ctx context.Context, location string, day
 
 	url := fmt.Sprintf("%s/forecast.json?key=%s&q=%s&days=%d&aqi=no", w.baseURL, w.apiKey, location, days)
 	
-	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	// Use retry logic for HTTP request
+	resp, err := retry.RetryWithResult(ctx, w.retryConfig, func() (*http.Response, error) {
+		req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create request: %w", err)
+		}
+		
+		resp, err := w.client.Do(req)
+		if err != nil {
+			return nil, fmt.Errorf("failed to make request: %w", err)
+		}
+		
+		// Check for retryable status codes
+		if resp.StatusCode >= 500 || resp.StatusCode == http.StatusTooManyRequests {
+			resp.Body.Close()
+			return nil, fmt.Errorf("retryable HTTP error: %s", resp.Status)
+		}
+		
+		return resp, nil
+	})
+	
 	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
-	}
-
-	resp, err := w.client.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("failed to make request: %w", err)
+		return nil, err
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		if resp.StatusCode == http.StatusTooManyRequests {
-			return nil, fmt.Errorf("rate limit exceeded for WeatherAPI")
-		}
 		if resp.StatusCode == http.StatusBadRequest {
 			return nil, fmt.Errorf("invalid location: %s", location)
 		}

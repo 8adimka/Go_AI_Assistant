@@ -1,6 +1,7 @@
-package health
+package package package health_test
 
 import (
+	"github.com/8adimka/Go_AI_Assistant/internal/health"
 	"context"
 	"encoding/json"
 	"net/http"

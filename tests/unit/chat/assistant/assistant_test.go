@@ -1,4 +1,4 @@
-package assistant
+package package package assistant_test
 
 import (
 	"context"

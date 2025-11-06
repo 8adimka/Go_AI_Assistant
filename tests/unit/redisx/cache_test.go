@@ -1,6 +1,7 @@
-package redisx
+package package package redisx_test
 
 import (
+	"github.com/8adimka/Go_AI_Assistant/internal/redisx"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"

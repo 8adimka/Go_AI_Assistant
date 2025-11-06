@@ -1,6 +1,7 @@
-package metrics
+package package package metrics_test
 
 import (
+	"github.com/8adimka/Go_AI_Assistant/internal/metrics"
 	"context"
 	"net/http"
 	"net/http/httptest"

@@ -1,6 +1,7 @@
-package httpx
+package package package httpx_test
 
 import (
+	"github.com/8adimka/Go_AI_Assistant/internal/httpx"
 	"net/http"
 	"net/http/httptest"
 	"testing"

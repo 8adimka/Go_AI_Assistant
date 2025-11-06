@@ -256,7 +256,7 @@ func TestCircuitBreaker_DefaultConfig(t *testing.T) {
 
 	// Should use defaults: 3 failures, 30s cooldown
 	testErr := errors.New("test error")
-	
+
 	// 2 failures should keep circuit closed
 	for i := 0; i < 2; i++ {
 		cb.Execute(func() error { return testErr })

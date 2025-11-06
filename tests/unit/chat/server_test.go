@@ -1,6 +1,7 @@
-package chat
+package package package chat_test
 
 import (
+	"github.com/8adimka/Go_AI_Assistant/internal/chat"
 	"context"
 	"strings"
 	"testing"

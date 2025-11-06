@@ -1,6 +1,7 @@
-package errorsx
+package package package errorsx_test
 
 import (
+	"github.com/8adimka/Go_AI_Assistant/internal/errorsx"
 	"errors"
 	"fmt"
 	"strings"

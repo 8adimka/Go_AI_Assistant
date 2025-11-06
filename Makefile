@@ -1,61 +1,69 @@
-gen:
-	protoc --proto_path=. --twirp_out=. --go_out=. rpc/*.proto
+.PHONY: test-unit test-integration test-e2e test-all
 
-run:
-	go run ./cmd/server
-
-# Test commands
-test:
-	go test ./...
-
+# Run all unit tests
 test-unit:
-	go test ./tests/unit/... -v
+	go test ./tests/unit/...
 
+# Run all integration tests
 test-integration:
-	go test -tags=integration ./tests/integration/... -v
+	go test ./tests/integration/...
 
+# Run all e2e tests
 test-e2e:
-	go test -tags=e2e ./tests/e2e/... -v
+	go test ./tests/e2e/...
 
-test-performance:
-	go test -bench=. ./tests/performance/... -benchmem
+# Run all tests
+test-all: test-unit test-integration test-e2e
 
-test-all: test-unit test-integration test-e2e test-performance
+# Run specific unit test packages
+test-unit-circuitbreaker:
+	go test ./tests/unit/circuitbreaker
 
+test-unit-chat:
+	go test ./tests/unit/chat
+
+test-unit-errorsx:
+	go test ./tests/unit/errorsx
+
+test-unit-health:
+	go test ./tests/unit/health
+
+test-unit-httpx:
+	go test ./tests/unit/httpx
+
+test-unit-metrics:
+	go test ./tests/unit/metrics
+
+test-unit-redisx:
+	go test ./tests/unit/redisx
+
+test-unit-tools:
+	go test ./tests/unit/tools
+
+# Clean test cache
+test-clean:
+	go clean -testcache
+
+# Show test coverage
 test-coverage:
-	go test ./... -coverprofile=coverage.out
+	go test -coverprofile=coverage.out ./tests/unit/...
 	go tool cover -html=coverage.out -o coverage.html
 
-up:
-	docker compose up -d
-
-down:
-	docker compose down
-
-# Database migration commands
-migrate-up:
-	@echo "Running migrations..."
-	@mongosh $${MONGO_URI:-mongodb://acai:travel@localhost:27017/acai} --file migrations/000001_init.up.js
-
-migrate-down:
-	@echo "Rolling back migrations..."
-	@mongosh $${MONGO_URI:-mongodb://acai:travel@localhost:27017/acai} --file migrations/000001_init.down.js
-
-migrate-status:
-	@echo "Checking indexes..."
-	@mongosh $${MONGO_URI:-mongodb://acai:travel@localhost:27017/acai} --eval "db.conversations.getIndexes(); db.messages.getIndexes();"
-
-# Database backup and restore
-backup:
-	@echo "Creating backup..."
-	@mkdir -p backups
-	@mongodump --uri="$${MONGO_URI:-mongodb://acai:travel@localhost:27017}" --db=acai --out=backups/backup-$$(date +%Y%m%d-%H%M%S)
-
-restore:
-	@echo "Restoring from backup..."
-	@mongorestore --uri="$${MONGO_URI:-mongodb://acai:travel@localhost:27017}" --db=acai $(BACKUP_PATH)
-
-# Smoke test
-smoke:
-	@chmod +x scripts/smoke-test.sh
-	@./scripts/smoke-test.sh
+# Help
+help:
+	@echo "Available targets:"
+	@echo "  test-unit              - Run all unit tests"
+	@echo "  test-integration       - Run all integration tests"
+	@echo "  test-e2e               - Run all e2e tests"
+	@echo "  test-all               - Run all tests"
+	@echo "  test-unit-circuitbreaker - Run circuitbreaker unit tests"
+	@echo "  test-unit-chat         - Run chat unit tests"
+	@echo "  test-unit-errorsx      - Run errorsx unit tests"
+	@echo "  test-unit-health       - Run health unit tests"
+	@echo "  test-unit-httpx        - Run httpx unit tests"
+	@echo "  test-unit-metrics      - Run metrics unit tests"
+	@echo "  test-unit-redisx       - Run redisx unit tests"
+	@echo "  test-unit-tools        - Run tools unit tests"
+	@echo "  test-clean             - Clean test cache"
+	@echo "  test-coverage          - Generate test coverage report"
+	@echo "  help                   - Show this help message"

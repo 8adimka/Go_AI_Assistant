@@ -11,6 +11,7 @@ import (
 	"github.com/8adimka/Go_AI_Assistant/internal/chat/model"
 	"github.com/8adimka/Go_AI_Assistant/internal/config"
 	"github.com/8adimka/Go_AI_Assistant/internal/redisx"
+	"github.com/8adimka/Go_AI_Assistant/internal/retry"
 	"github.com/8adimka/Go_AI_Assistant/internal/tools/factory"
 	"github.com/8adimka/Go_AI_Assistant/internal/tools/registry"
 	"github.com/openai/openai-go/v2"
@@ -20,6 +21,7 @@ type Assistant struct {
 	cli           openai.Client
 	cache         *redisx.Cache
 	toolRegistry  *registry.ToolRegistry
+	retryConfig   retry.RetryConfig
 }
 
 func New() *Assistant {
@@ -36,6 +38,7 @@ func New() *Assistant {
 		cli:           openai.NewClient(),
 		cache:         cache,
 		toolRegistry:  toolRegistry,
+		retryConfig:   retry.ConfigFromAppConfig(cfg),
 	}
 }
 
@@ -80,10 +83,13 @@ Generate title for:`
 		openai.UserMessage(userMessage),
 	}
 
-	resp, err := a.cli.Chat.Completions.New(ctx, openai.ChatCompletionNewParams{
-		Model:    openai.ChatModelGPT4Turbo, // Faster model for titles
-		Messages: msgs,
-		MaxTokens: openai.Int(30), // Limit tokens for brevity
+	// Use retry logic for OpenAI API call
+	resp, err := retry.RetryWithResult(ctx, a.retryConfig, func() (*openai.ChatCompletion, error) {
+		return a.cli.Chat.Completions.New(ctx, openai.ChatCompletionNewParams{
+			Model:    openai.ChatModelGPT4Turbo, // Faster model for titles
+			Messages: msgs,
+			MaxTokens: openai.Int(30), // Limit tokens for brevity
+		})
 	})
 
 	if err != nil {
@@ -172,10 +178,13 @@ func (a *Assistant) Reply(ctx context.Context, conv *model.Conversation) (string
 	tools := a.convertToolsToOpenAIFormat()
 
 	for i := 0; i < 15; i++ {
-		resp, err := a.cli.Chat.Completions.New(ctx, openai.ChatCompletionNewParams{
-			Model:    openai.ChatModelGPT4_1,
-			Messages: msgs,
-			Tools:    tools,
+		// Use retry logic for OpenAI API call
+		resp, err := retry.RetryWithResult(ctx, a.retryConfig, func() (*openai.ChatCompletion, error) {
+			return a.cli.Chat.Completions.New(ctx, openai.ChatCompletionNewParams{
+				Model:    openai.ChatModelGPT4_1,
+				Messages: msgs,
+				Tools:    tools,
+			})
 		})
 
 		if err != nil {

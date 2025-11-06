@@ -24,7 +24,7 @@ func NewMockOpenAIClient() *MockOpenAIClient {
 			Choices: []openai.ChatCompletionChoice{
 				{
 					Message: openai.ChatCompletionMessage{
-						Content: openai.String("Mock response from AI assistant"),
+						Content: "Mock response from AI assistant",
 					},
 				},
 			},
@@ -75,7 +75,7 @@ func MockChatCompletion(content string) *openai.ChatCompletion {
 		Choices: []openai.ChatCompletionChoice{
 			{
 				Message: openai.ChatCompletionMessage{
-					Content: openai.F(content),
+					Content: content,
 				},
 			},
 		},
