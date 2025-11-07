@@ -9,13 +9,26 @@ import (
 
 	"github.com/8adimka/Go_AI_Assistant/internal/chat/assistant"
 	"github.com/8adimka/Go_AI_Assistant/internal/chat/model"
+	"github.com/8adimka/Go_AI_Assistant/internal/metrics"
 	"go.mongodb.org/mongo-driver/bson/primitive"
+	"go.opentelemetry.io/otel/metric/noop"
 )
+
+// createTestMetrics creates a metrics instance for testing
+func createTestMetrics(t *testing.T) *metrics.Metrics {
+	meter := noop.NewMeterProvider().Meter("test")
+	appMetrics, err := metrics.NewMetrics(meter)
+	if err != nil {
+		t.Fatalf("Failed to create test metrics: %v", err)
+	}
+	return appMetrics
+}
 
 // TestAssistantCompleteWorkflow tests the complete assistant workflow with retry mechanism
 func TestAssistantCompleteWorkflow(t *testing.T) {
 	// Create assistant
-	assist := assistant.New()
+	appMetrics := createTestMetrics(t)
+	assist := assistant.New(appMetrics)
 
 	// Test conversation scenarios
 	tests := []struct {
@@ -97,7 +110,8 @@ func TestAssistantCompleteWorkflow(t *testing.T) {
 
 // TestAssistantErrorHandling tests error handling and retry mechanisms
 func TestAssistantErrorHandling(t *testing.T) {
-	assist := assistant.New()
+	appMetrics := createTestMetrics(t)
+	assist := assistant.New(appMetrics)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
@@ -153,7 +167,8 @@ func TestAssistantErrorHandling(t *testing.T) {
 
 // TestAssistantToolIntegration tests the integration of various tools
 func TestAssistantToolIntegration(t *testing.T) {
-	assist := assistant.New()
+	appMetrics := createTestMetrics(t)
+	assist := assistant.New(appMetrics)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
 	defer cancel()
