@@ -114,6 +114,20 @@ python telegram_bot_enhanced.py
 - `GET /metrics` - Prometheus metrics (requires API key)
 - `POST /twirp/chat.ChatService/*` - Chat API (Twirp RPC)
 
+### Interactive API Documentation
+
+The project includes **Swagger UI** for interactive API exploration:
+
+- **Swagger UI**: <http://localhost:8080/docs/>
+- **Static Documentation**: <http://localhost:8080/api-docs>
+
+Swagger UI provides:
+
+- Interactive API testing
+- Request/response examples
+- Automatic schema validation
+- All endpoints with detailed descriptions
+
 ## Available Tools
 
 The assistant comes with a scalable modular tool system.
@@ -471,7 +485,9 @@ MIT License (see LICENSE file)
 
 ## Links
 
-- [Architecture Documentation](ARCHITECTURE.md)
-- [Production Readiness Checklist](PRODUCTION_READINESS.md)
-- [Telegram Bot Setup](python_telegram_bot/README.md)
-- [CLI Tool Usage](cmd/cli/README.md)
+- [Architecture Documentation](ARCHITECTURE.md) - Detailed system design and rationale
+- [Production Readiness Checklist](PRODUCTION_READINESS.md) - Deployment guidelines
+- [Interactive API Documentation](http://localhost:8080/docs/) - Swagger UI for API testing
+- [Static API Documentation](http://localhost:8080/api-docs) - HTML documentation
+- [Telegram Bot Setup](python_telegram_bot/README.md) - Bot integration guide
+- [CLI Tool Usage](cmd/cli/README.md) - Command-line interface
