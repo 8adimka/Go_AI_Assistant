@@ -1,0 +1,309 @@
+definitions:
+  main.ContinueConversationRequest:
+    properties:
+      conversation_id:
+        example: 507f1f77bcf86cd799439011
+        type: string
+      message:
+        example: What about tomorrow?
+        type: string
+      session_metadata:
+        $ref: '#/definitions/main.SessionMetadata'
+    type: object
+  main.ContinueConversationResponse:
+    properties:
+      reply:
+        example: Tomorrow will be partly cloudy with 20°C...
+        type: string
+    type: object
+  main.Conversation:
+    properties:
+      id:
+        example: 507f1f77bcf86cd799439011
+        type: string
+      messages:
+        items:
+          $ref: '#/definitions/main.Message'
+        type: array
+      timestamp:
+        example: "2025-11-07T20:15:00Z"
+        type: string
+      title:
+        example: Weather discussion
+        type: string
+    type: object
+  main.DescribeConversationRequest:
+    properties:
+      conversation_id:
+        example: 507f1f77bcf86cd799439011
+        type: string
+    type: object
+  main.DescribeConversationResponse:
+    properties:
+      conversation:
+        $ref: '#/definitions/main.Conversation'
+    type: object
+  main.ErrorResponse:
+    properties:
+      code:
+        example: 400
+        type: integer
+      details:
+        example: 'Missing required field: message'
+        type: string
+      message:
+        example: Bad Request
+        type: string
+    type: object
+  main.HealthResponse:
+    properties:
+      checks:
+        additionalProperties:
+          type: string
+        example:
+          mongodb: ok
+          redis: ok
+        type: object
+      status:
+        example: healthy
+        type: string
+    type: object
+  main.ListConversationsResponse:
+    properties:
+      conversations:
+        items:
+          $ref: '#/definitions/main.Conversation'
+        type: array
+    type: object
+  main.Message:
+    properties:
+      content:
+        example: What's the weather like?
+        type: string
+      id:
+        example: 507f1f77bcf86cd799439012
+        type: string
+      role:
+        example: user
+        type: string
+      timestamp:
+        example: "2025-11-07T20:15:00Z"
+        type: string
+    type: object
+  main.SessionMetadata:
+    properties:
+      chat_id:
+        example: "67890"
+        type: string
+      platform:
+        example: telegram
+        type: string
+      user_id:
+        example: "12345"
+        type: string
+    type: object
+  main.StartConversationRequest:
+    properties:
+      message:
+        example: What's the weather in Barcelona?
+        type: string
+      session_metadata:
+        $ref: '#/definitions/main.SessionMetadata'
+    type: object
+  main.StartConversationResponse:
+    properties:
+      conversation_id:
+        example: 507f1f77bcf86cd799439011
+        type: string
+      reply:
+        example: The weather in Barcelona is sunny with 22°C...
+        type: string
+      title:
+        example: Weather in Barcelona
+        type: string
+    type: object
+info:
+  contact: {}
+paths:
+  /:
+    get:
+      description: Get basic service information
+      produces:
+      - text/plain
+      responses:
+        "200":
+          description: Service information
+          schema:
+            type: string
+      summary: Service information
+      tags:
+      - system
+  /health:
+    get:
+      description: Check service health status including MongoDB and Redis connectivity
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/main.HealthResponse'
+      summary: Health check
+      tags:
+      - system
+  /metrics:
+    get:
+      description: Get Prometheus metrics for monitoring (requires API key)
+      produces:
+      - text/plain
+      responses:
+        "200":
+          description: Prometheus metrics
+          schema:
+            type: string
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+      security:
+      - ApiKeyAuth: []
+      summary: Prometheus metrics
+      tags:
+      - system
+  /ready:
+    get:
+      description: Check service readiness for traffic
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/main.HealthResponse'
+      summary: Readiness check
+      tags:
+      - system
+  /twirp/chat.ChatService/ContinueConversation:
+    post:
+      consumes:
+      - application/json
+      description: Continue an existing conversation with the AI assistant. Supports
+        both direct conversation_id and session-based conversations for stateless
+        clients.
+      parameters:
+      - description: Continue conversation request
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/main.ContinueConversationRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/main.ContinueConversationResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+      summary: Continue an existing conversation
+      tags:
+      - conversations
+  /twirp/chat.ChatService/DescribeConversation:
+    post:
+      consumes:
+      - application/json
+      description: Get detailed information about a specific conversation including
+        all messages.
+      parameters:
+      - description: Describe conversation request
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/main.DescribeConversationRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/main.DescribeConversationResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+      summary: Get conversation details
+      tags:
+      - conversations
+  /twirp/chat.ChatService/ListConversations:
+    post:
+      consumes:
+      - application/json
+      description: Get list of recent conversations. Messages are excluded from the
+        response to avoid large payloads.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/main.ListConversationsResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+      summary: List conversations
+      tags:
+      - conversations
+  /twirp/chat.ChatService/StartConversation:
+    post:
+      consumes:
+      - application/json
+      description: Create a new conversation with the AI assistant. The assistant
+        can answer questions, provide weather information, date/time, and holiday
+        information.
+      parameters:
+      - description: Start conversation request
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/main.StartConversationRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/main.StartConversationResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+      summary: Start a new conversation
+      tags:
+      - conversations
+swagger: "2.0"

@@ -137,15 +137,17 @@ class TelegramBotEnhanced:
             reply = result["reply"]
             response_text = f"🤖 {reply}"
             await update.message.reply_text(response_text)
-            conversation_id = result.get("conversation_id", "unknown")
-            logger.info(f"Continued conversation: {conversation_id}")
+            # Log session information instead of conversation_id (not returned in ContinueConversation)
+            logger.info(f"Continued conversation for user {user_id}, chat {chat_id}")
         else:
             # If continue fails, provide error message
             error_msg = (
                 result.get("error", "Unknown error") if result else "Connection error"
             )
             await update.message.reply_text(f"❌ AI Error: {error_msg}")
-            logger.error(f"Failed to continue conversation: {error_msg}")
+            logger.error(
+                f"Failed to continue conversation for user {user_id}: {error_msg}"
+            )
 
     async def status(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Shows current system status"""
