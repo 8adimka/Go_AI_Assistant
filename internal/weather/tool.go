@@ -6,16 +6,15 @@ import (
 	"log/slog"
 
 	"github.com/8adimka/Go_AI_Assistant/internal/tools/registry"
-	"github.com/8adimka/Go_AI_Assistant/internal/weather"
 )
 
 // WeatherTool provides weather information using the weather service
 type WeatherTool struct {
-	weatherService *weather.FallbackWeatherService
+	weatherService *FallbackWeatherService
 }
 
 // New creates a new WeatherTool instance
-func New(weatherService *weather.FallbackWeatherService) *WeatherTool {
+func New(weatherService *FallbackWeatherService) *WeatherTool {
 	return &WeatherTool{
 		weatherService: weatherService,
 	}
@@ -62,7 +61,7 @@ func (w *WeatherTool) Execute(ctx context.Context, args map[string]interface{}) 
 	}
 
 	// Format weather data for response
-	weatherMessage := weather.FormatWeather(weatherData)
+	weatherMessage := FormatWeather(weatherData)
 	return weatherMessage, nil
 }
 

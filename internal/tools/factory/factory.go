@@ -9,7 +9,6 @@ import (
 	"github.com/8adimka/Go_AI_Assistant/internal/tools/datetime"
 	"github.com/8adimka/Go_AI_Assistant/internal/tools/holidays"
 	"github.com/8adimka/Go_AI_Assistant/internal/tools/registry"
-	weathertool "github.com/8adimka/Go_AI_Assistant/internal/tools/weather"
 	"github.com/8adimka/Go_AI_Assistant/internal/weather"
 )
 
@@ -56,7 +55,7 @@ func (f *Factory) registerDateTimeTool() {
 
 // registerWeatherTool registers the weather tool
 func (f *Factory) registerWeatherTool(weatherService *weather.FallbackWeatherService) {
-	weatherTool := weathertool.New(weatherService)
+	weatherTool := weather.New(weatherService)
 	f.registry.Register(weatherTool)
 }
 
