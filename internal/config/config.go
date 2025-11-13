@@ -37,6 +37,9 @@ type Config struct {
 	// Circuit Breaker
 	CircuitBreakerMaxFailures     int // Max failures before opening circuit
 	CircuitBreakerCooldownSeconds int // Cooldown period in seconds
+
+	// Context Management
+	MaxContextTokens int // Maximum tokens for conversation context
 }
 
 // Load loads configuration from environment variables and .env file
@@ -73,6 +76,9 @@ func Load() *Config {
 		// Circuit Breaker
 		CircuitBreakerMaxFailures:     getEnvInt("CIRCUIT_BREAKER_MAX_FAILURES", 3),
 		CircuitBreakerCooldownSeconds: getEnvInt("CIRCUIT_BREAKER_COOLDOWN_SECONDS", 30),
+
+		// Context Management
+		MaxContextTokens: getEnvInt("MAX_CONTEXT_TOKENS", 4000),
 	}
 
 	// Validate required configuration
@@ -114,4 +120,14 @@ func getEnvFloat(key string, fallback float64) float64 {
 		log.Printf("Warning: invalid float value for %s: %s, using default: %f", key, value, fallback)
 	}
 	return fallback
+}
+
+// SafeString returns a safe representation of the config for logging
+func (c *Config) SafeString() string {
+	return fmt.Sprintf(
+		"Config{OpenAIModel: %q, RedisAddr: %q, MongoURI: %q, "+
+			"RetryMaxAttempts: %d, APIRateLimitRPS: %.1f, CacheTTLHours: %d, SessionTTLMinutes: %d}",
+		c.OpenAIModel, c.RedisAddr, c.MongoURI,
+		c.RetryMaxAttempts, c.APIRateLimitRPS, c.CacheTTLHours, c.SessionTTLMinutes,
+	)
 }

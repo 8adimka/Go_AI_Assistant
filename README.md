@@ -13,6 +13,7 @@ A production-ready AI assistant backend built with Go, featuring modular tool ar
 - 🗄️ **MongoDB Storage** - Conversation history with optimized indexes, prompt management
 - 📝 **Prompt Management** - Platform-specific prompts with caching and fallback system
 - 🔄 **Session Management** - Seamless conversation continuity for stateless clients (Telegram, Web, Mobile)
+- 🧠 **Intelligent Context Management** - Advanced token counting with tiktoken, AI-powered summarization, hybrid storage strategies
 - ✅ **Testing** - Unit, integration, E2E, and performance tests (75%+ coverage)
 - 🚀 **Production Ready** - Health checks, migrations, backups, CI/CD pipeline
 
@@ -127,6 +128,58 @@ Swagger UI provides:
 - Request/response examples
 - Automatic schema validation
 - All endpoints with detailed descriptions
+
+## Advanced Context Management
+
+The system features sophisticated context management with multiple strategies for optimal performance and resilience:
+
+### Token Counting & Estimation
+
+- **Accurate Token Counting**: Uses `tiktoken-go` library for precise token counting per OpenAI model
+- **Fallback Estimation**: Graceful fallback to character-based estimation when tiktoken fails
+- **Model-specific Encoding**: Automatic encoding selection based on OpenAI model (cl100k_base for GPT-4/3.5)
+
+### Context Summarization Strategies
+
+- **AI-Powered Summarization**: Uses GPT-4 to create intelligent summaries of long conversations
+- **Basic Reduction**: Fallback strategy that keeps only recent messages
+- **Hybrid Approach**: Tries AI summarization first, falls back to basic reduction if needed
+
+### Storage Strategies
+
+- **Redis Storage**: Primary persistent storage for conversation context with automatic cleanup
+- **Memory Storage**: In-memory fallback for high availability (removed in favor of unified approach)
+- **Unified Context Manager**: Single ContextManager with Redis storage and AI summarization capabilities
+
+### Intelligent Context Reduction & Summarization
+
+- **Proactive Reduction**: Monitors token usage and reduces context before hitting limits
+- **Emergency Reduction**: Automatic context reduction when OpenAI returns context length errors
+- **AI-Powered Summarization**: Uses GPT-4 to create intelligent summaries of long conversations
+- **Automatic Retry**: After summarization, the request is automatically retried with reduced context
+- **Configurable Limits**: Model-specific token limits with safety margins (80-90% of model capacity)
+
+### Context Management Strategies
+
+- **AI Summarization Strategy**: Uses GPT-4 to create concise summaries while preserving key information
+- **Basic Reduction Strategy**: Fallback that keeps only recent messages when AI summarization fails
+- **Hybrid Approach**: Tries AI summarization first, falls back to basic reduction if needed
+- **Redis Storage**: Persistent context storage with automatic cleanup
+
+### Fault Tolerance Features
+
+- **Automatic Recovery**: System doesn't crash when context limits are exceeded
+- **Retry Mechanism**: Failed requests due to context limits are automatically retried after summarization
+- **Graceful Degradation**: Falls back to basic reduction when AI summarization is unavailable
+- **Error Detection**: Automatically detects context length errors from OpenAI API
+
+### Configuration
+
+```bash
+# Context Management Configuration
+MAX_CONTEXT_TOKENS=4000                  # Maximum context tokens per conversation
+MAX_CONTEXT_HISTORY=50                   # Maximum message history to keep
+```
 
 ## Available Tools
 

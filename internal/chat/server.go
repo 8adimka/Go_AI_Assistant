@@ -142,13 +142,11 @@ func (s *Server) continueExistingConversation(ctx context.Context, conversationI
 	conversation.UpdatedAt = time.Now()
 	conversation.LastActivity = time.Now()
 
-	// Check if we need to summarize (more than 20 messages)
-	if len(conversation.Messages) >= 20 && conversation.Summary == "" {
-		conversation.Summary = s.summarizeConversation(ctx, conversation)
-		slog.InfoContext(ctx, "Conversation summarized",
-			"conversation_id", conversation.ID.Hex(),
-			"message_count", len(conversation.Messages))
-	}
+	// Context management is now handled by the assistant's context manager
+	// The assistant will automatically manage token limits and summarization
+	slog.DebugContext(ctx, "Context management delegated to assistant",
+		"conversation_id", conversation.ID.Hex(),
+		"message_count", len(conversation.Messages))
 
 	conversation.Messages = append(conversation.Messages, &model.Message{
 		ID:        primitive.NewObjectID(),
@@ -210,30 +208,8 @@ func (s *Server) DescribeConversation(ctx context.Context, req *pb.DescribeConve
 	return &pb.DescribeConversationResponse{Conversation: conversation.Proto()}, nil
 }
 
-// summarizeConversation creates a summary of the conversation for context management
+// summarizeConversation is deprecated - context management is now handled by the assistant
+// This function is kept for backward compatibility but is no longer used
 func (s *Server) summarizeConversation(ctx context.Context, conversation *model.Conversation) string {
-	// Basic summarization - extract key topics from first few messages
-	// In production, this would use AI to generate a proper summary
-	summary := "Conversation summary: "
-
-	// Take first 5 messages to create a basic summary
-	count := 5
-	if len(conversation.Messages) < count {
-		count = len(conversation.Messages)
-	}
-
-	for i := 0; i < count; i++ {
-		msg := conversation.Messages[i]
-		if msg.Role == model.RoleUser {
-			// Extract first few words from user messages
-			words := strings.Fields(msg.Content)
-			if len(words) > 3 {
-				summary += strings.Join(words[:3], " ") + "... "
-			} else {
-				summary += msg.Content + " "
-			}
-		}
-	}
-
-	return strings.TrimSpace(summary)
+	return "" // Context management is now handled by the assistant's context manager
 }

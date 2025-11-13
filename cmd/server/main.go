@@ -16,6 +16,7 @@ import (
 	"github.com/8adimka/Go_AI_Assistant/internal/config"
 	"github.com/8adimka/Go_AI_Assistant/internal/health"
 	"github.com/8adimka/Go_AI_Assistant/internal/httpx"
+	"github.com/8adimka/Go_AI_Assistant/internal/logging"
 	"github.com/8adimka/Go_AI_Assistant/internal/metrics"
 	"github.com/8adimka/Go_AI_Assistant/internal/mongox"
 	"github.com/8adimka/Go_AI_Assistant/internal/otel"
@@ -34,10 +35,16 @@ func main() {
 	// Load configuration from .env file
 	cfg := config.Load()
 
+	// Initialize secure logger
+	secureLogger := logging.NewSecureLogger(slog.Default())
+
+	// Log configuration safely
+	secureLogger.Info("Configuration loaded", "config", cfg.SafeString())
+
 	// Initialize OpenTelemetry
 	shutdown, err := otel.InitOpenTelemetry(ctx, "go-ai-assistant")
 	if err != nil {
-		slog.Error("Failed to initialize OpenTelemetry", "error", err)
+		secureLogger.Error("Failed to initialize OpenTelemetry", "error", err)
 		os.Exit(1)
 	}
 	defer shutdown(ctx)
@@ -55,7 +62,7 @@ func main() {
 	meter := otel.GetMeter()
 	appMetrics, err := metrics.NewMetrics(meter)
 	if err != nil {
-		slog.Error("Failed to initialize metrics", "error", err)
+		secureLogger.Error("Failed to initialize metrics", "error", err)
 		os.Exit(1)
 	}
 
@@ -89,14 +96,14 @@ func main() {
 	handler.HandleFunc("/health", healthChecker.HealthHandler)
 	handler.HandleFunc("/ready", healthChecker.ReadyHandler)
 
-	// Metrics endpoint - Prometheus metrics (protected with API key)
-	if cfg.APIKey != "" {
-		auth := httpx.NewAPIKeyAuth(cfg.APIKey)
-		handler.Handle("/metrics", auth.Middleware()(promhttp.Handler()))
-		slog.Info("Metrics endpoint protected with API key")
+	// Metrics endpoint - Prometheus metrics (always available, protected with API key)
+	auth := httpx.NewAPIKeyAuth(cfg.APIKey)
+	handler.Handle("/metrics", auth.Middleware()(promhttp.Handler()))
+
+	if cfg.APIKey == "" || cfg.APIKey == "changeme_in_production" {
+		secureLogger.Warn("API_KEY is not set or using default value - metrics endpoint is accessible but requires authentication")
 	} else {
-		handler.Handle("/metrics", promhttp.Handler())
-		slog.Warn("Metrics endpoint is NOT protected - set API_KEY in production!")
+		secureLogger.Info("Metrics endpoint protected with API key")
 	}
 
 	handler.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
@@ -675,9 +682,9 @@ func main() {
 
 	// Start server in a goroutine
 	go func() {
-		slog.Info("Starting the server...", "port", "8080")
+		secureLogger.Info("Starting the server...", "port", "8080")
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			slog.Error("Server failed to start", "error", err)
+			secureLogger.Error("Server failed to start", "error", err)
 			os.Exit(1)
 		}
 	}()
@@ -686,15 +693,15 @@ func main() {
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
-	slog.Info("Shutting down server...")
+	secureLogger.Info("Shutting down server...")
 
 	// Create a deadline for graceful shutdown
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
 	if err := srv.Shutdown(ctx); err != nil {
-		slog.Error("Server forced to shutdown", "error", err)
+		secureLogger.Error("Server forced to shutdown", "error", err)
 	}
 
-	slog.Info("Server exited")
+	secureLogger.Info("Server exited")
 }
