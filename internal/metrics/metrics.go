@@ -12,17 +12,19 @@ import (
 
 // Metrics holds all application metrics
 type Metrics struct {
-	httpRequestsTotal    metric.Int64Counter
-	httpRequestDuration  metric.Float64Histogram
-	httpRequestsInFlight metric.Int64UpDownCounter
-	twirpRequestsTotal   metric.Int64Counter
+	httpRequestsTotal   metric.Int64Counter
+	httpRequestDuration metric.Float64Histogram
+	twirpRequestsTotal  metric.Int64Counter
 
-	// OpenAI metrics
-	openaiTokensInput     metric.Int64Counter
-	openaiTokensOutput    metric.Int64Counter
-	openaiTokensTotal     metric.Int64Counter
+	// Simplified OpenAI metrics
 	openaiRequestsTotal   metric.Int64Counter
 	openaiRequestDuration metric.Float64Histogram
+
+	// Token usage metrics
+	tokenUsageTotal      metric.Int64Counter
+	tokenUsageByModel    metric.Int64Counter
+	contextTokenCount    metric.Int64Histogram
+	tokenEstimationError metric.Float64Histogram
 }
 
 // NewMetrics creates and initializes all metrics
@@ -45,15 +47,6 @@ func NewMetrics(meter metric.Meter) (*Metrics, error) {
 		return nil, err
 	}
 
-	httpRequestsInFlight, err := meter.Int64UpDownCounter(
-		"http_server_requests_in_progress",
-		metric.WithDescription("Number of HTTP requests currently in progress"),
-		metric.WithUnit("1"),
-	)
-	if err != nil {
-		return nil, err
-	}
-
 	twirpRequestsTotal, err := meter.Int64Counter(
 		"twirp_requests_total",
 		metric.WithDescription("Total number of Twirp requests"),
@@ -63,34 +56,7 @@ func NewMetrics(meter metric.Meter) (*Metrics, error) {
 		return nil, err
 	}
 
-	// OpenAI metrics
-	openaiTokensInput, err := meter.Int64Counter(
-		"openai_tokens_input_total",
-		metric.WithDescription("Total OpenAI input tokens consumed"),
-		metric.WithUnit("tokens"),
-	)
-	if err != nil {
-		return nil, err
-	}
-
-	openaiTokensOutput, err := meter.Int64Counter(
-		"openai_tokens_output_total",
-		metric.WithDescription("Total OpenAI output tokens consumed"),
-		metric.WithUnit("tokens"),
-	)
-	if err != nil {
-		return nil, err
-	}
-
-	openaiTokensTotal, err := meter.Int64Counter(
-		"openai_tokens_total",
-		metric.WithDescription("Total OpenAI tokens consumed"),
-		metric.WithUnit("tokens"),
-	)
-	if err != nil {
-		return nil, err
-	}
-
+	// Simplified OpenAI metrics
 	openaiRequestsTotal, err := meter.Int64Counter(
 		"openai_requests_total",
 		metric.WithDescription("Total OpenAI API requests"),
@@ -109,16 +75,55 @@ func NewMetrics(meter metric.Meter) (*Metrics, error) {
 		return nil, err
 	}
 
+	// Token usage metrics
+	tokenUsageTotal, err := meter.Int64Counter(
+		"token_usage_total",
+		metric.WithDescription("Total tokens used across all operations"),
+		metric.WithUnit("1"),
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	tokenUsageByModel, err := meter.Int64Counter(
+		"token_usage_by_model",
+		metric.WithDescription("Token usage broken down by model"),
+		metric.WithUnit("1"),
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	contextTokenCount, err := meter.Int64Histogram(
+		"context_token_count",
+		metric.WithDescription("Distribution of context token counts"),
+		metric.WithUnit("1"),
+		metric.WithExplicitBucketBoundaries(100, 500, 1000, 2000, 4000, 8000, 16000, 32000, 64000, 128000),
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	tokenEstimationError, err := meter.Float64Histogram(
+		"token_estimation_error_percent",
+		metric.WithDescription("Percentage error in token estimation"),
+		metric.WithUnit("%"),
+		metric.WithExplicitBucketBoundaries(1, 5, 10, 20, 50, 100),
+	)
+	if err != nil {
+		return nil, err
+	}
+
 	return &Metrics{
 		httpRequestsTotal:     httpRequestsTotal,
 		httpRequestDuration:   httpRequestDuration,
-		httpRequestsInFlight:  httpRequestsInFlight,
 		twirpRequestsTotal:    twirpRequestsTotal,
-		openaiTokensInput:     openaiTokensInput,
-		openaiTokensOutput:    openaiTokensOutput,
-		openaiTokensTotal:     openaiTokensTotal,
 		openaiRequestsTotal:   openaiRequestsTotal,
 		openaiRequestDuration: openaiRequestDuration,
+		tokenUsageTotal:       tokenUsageTotal,
+		tokenUsageByModel:     tokenUsageByModel,
+		contextTokenCount:     contextTokenCount,
+		tokenEstimationError:  tokenEstimationError,
 	}, nil
 }
 
@@ -127,9 +132,6 @@ func (m *Metrics) HTTPMetricsMiddleware() func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			start := time.Now()
-
-			// Increment in-flight requests
-			m.httpRequestsInFlight.Add(r.Context(), 1)
 
 			// Create response writer to capture status code
 			rw := &responseWriter{ResponseWriter: w, statusCode: http.StatusOK}
@@ -156,9 +158,6 @@ func (m *Metrics) HTTPMetricsMiddleware() func(http.Handler) http.Handler {
 					attribute.String("status_code", statusCode),
 				),
 			)
-
-			// Decrement in-flight requests
-			m.httpRequestsInFlight.Add(r.Context(), -1)
 		})
 	}
 }
@@ -173,15 +172,8 @@ func (m *Metrics) RecordTwirpRequest(ctx context.Context, method string, status 
 	)
 }
 
-// TokenUsage represents OpenAI token usage
-type TokenUsage struct {
-	PromptTokens     int
-	CompletionTokens int
-	TotalTokens      int
-}
-
-// RecordOpenAITokens records OpenAI token usage metrics
-func (m *Metrics) RecordOpenAITokens(ctx context.Context, operation, model, userID, platform string, usage TokenUsage, duration time.Duration) {
+// RecordOpenAIRequest records simplified OpenAI request metrics
+func (m *Metrics) RecordOpenAIRequest(ctx context.Context, operation, model, userID, platform string, duration time.Duration) {
 	attrs := []attribute.KeyValue{
 		attribute.String("operation", operation), // "title" or "reply"
 		attribute.String("model", model),
@@ -189,11 +181,78 @@ func (m *Metrics) RecordOpenAITokens(ctx context.Context, operation, model, user
 		attribute.String("platform", platform),
 	}
 
-	m.openaiTokensInput.Add(ctx, int64(usage.PromptTokens), metric.WithAttributes(attrs...))
-	m.openaiTokensOutput.Add(ctx, int64(usage.CompletionTokens), metric.WithAttributes(attrs...))
-	m.openaiTokensTotal.Add(ctx, int64(usage.TotalTokens), metric.WithAttributes(attrs...))
 	m.openaiRequestsTotal.Add(ctx, 1, metric.WithAttributes(attrs...))
 	m.openaiRequestDuration.Record(ctx, float64(duration.Milliseconds()), metric.WithAttributes(attrs...))
+}
+
+// RecordTokenUsage records token usage metrics
+func (m *Metrics) RecordTokenUsage(ctx context.Context, operation, model string, promptTokens, completionTokens, totalTokens int64) {
+	attrs := []attribute.KeyValue{
+		attribute.String("operation", operation),
+		attribute.String("model", model),
+	}
+
+	// Record total tokens
+	m.tokenUsageTotal.Add(ctx, totalTokens, metric.WithAttributes(attrs...))
+
+	// Record breakdown by model
+	modelAttrs := []attribute.KeyValue{
+		attribute.String("model", model),
+		attribute.String("token_type", "prompt"),
+	}
+	m.tokenUsageByModel.Add(ctx, promptTokens, metric.WithAttributes(modelAttrs...))
+
+	modelAttrs = []attribute.KeyValue{
+		attribute.String("model", model),
+		attribute.String("token_type", "completion"),
+	}
+	m.tokenUsageByModel.Add(ctx, completionTokens, metric.WithAttributes(modelAttrs...))
+
+	modelAttrs = []attribute.KeyValue{
+		attribute.String("model", model),
+		attribute.String("token_type", "total"),
+	}
+	m.tokenUsageByModel.Add(ctx, totalTokens, metric.WithAttributes(modelAttrs...))
+}
+
+// RecordContextTokenCount records the size of conversation contexts
+func (m *Metrics) RecordContextTokenCount(ctx context.Context, conversationID, platform string, tokenCount int64) {
+	attrs := []attribute.KeyValue{
+		attribute.String("conversation_id", conversationID),
+		attribute.String("platform", platform),
+	}
+	m.contextTokenCount.Record(ctx, tokenCount, metric.WithAttributes(attrs...))
+}
+
+// RecordTokenEstimationError records the accuracy of token estimation
+func (m *Metrics) RecordTokenEstimationError(ctx context.Context, operation string, estimatedTokens, actualTokens int) {
+	if actualTokens == 0 {
+		return // Avoid division by zero
+	}
+
+	errorPercent := float64(abs(estimatedTokens-actualTokens)) / float64(actualTokens) * 100
+
+	attrs := []attribute.KeyValue{
+		attribute.String("operation", operation),
+	}
+	m.tokenEstimationError.Record(ctx, errorPercent, metric.WithAttributes(attrs...))
+}
+
+// RecordOpenAIRequestWithTokens records OpenAI request with detailed token metrics
+func (m *Metrics) RecordOpenAIRequestWithTokens(ctx context.Context, operation, model, userID, platform string, duration time.Duration, promptTokens, completionTokens, totalTokens int64) {
+	// Record basic OpenAI metrics
+	m.RecordOpenAIRequest(ctx, operation, model, userID, platform, duration)
+
+	// Record detailed token usage
+	m.RecordTokenUsage(ctx, operation, model, promptTokens, completionTokens, totalTokens)
+}
+
+// Helper function for absolute value
+func abs(x int) int {
+	if x < 0 {
+		return -x
+	}
+	return x
 }
 
 // responseWriter captures the status code for metrics

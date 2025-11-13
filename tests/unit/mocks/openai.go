@@ -3,7 +3,7 @@ package mocks
 import (
 	"context"
 
-	"github.com/openai/openai-go/v2"
+	"github.com/openai/openai-go"
 )
 
 // MockOpenAIClient is a mock implementation of openai.Client for testing

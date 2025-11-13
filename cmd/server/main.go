@@ -23,6 +23,7 @@ import (
 	"github.com/8adimka/Go_AI_Assistant/internal/pb"
 	"github.com/8adimka/Go_AI_Assistant/internal/redisx"
 	"github.com/8adimka/Go_AI_Assistant/internal/session"
+	"github.com/8adimka/Go_AI_Assistant/internal/tokens"
 	"github.com/gorilla/mux"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	httpSwagger "github.com/swaggo/http-swagger"
@@ -64,6 +65,13 @@ func main() {
 	if err != nil {
 		secureLogger.Error("Failed to initialize metrics", "error", err)
 		os.Exit(1)
+	}
+
+	// Initialize global token counter for precise token counting
+	if err := tokens.InitGlobalTokenCounter(cfg.OpenAIModel); err != nil {
+		secureLogger.Warn("Failed to initialize global token counter, using fallback estimation", "error", err)
+	} else {
+		secureLogger.Info("Global token counter initialized", "model", cfg.OpenAIModel)
 	}
 
 	repo := model.New(mongo)

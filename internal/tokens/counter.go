@@ -1,7 +1,6 @@
 package tokens
 
 import (
-	"context"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -12,50 +11,77 @@ import (
 // TokenCounter provides accurate token counting using tiktoken
 type TokenCounter struct {
 	encoders map[string]*tiktoken.Tiktoken
+	model    string
 }
 
-// NewTokenCounter creates a new token counter
-func NewTokenCounter() *TokenCounter {
-	return &TokenCounter{
+// NewTokenCounter creates a new token counter for a specific model
+func NewTokenCounter(model string) (*TokenCounter, error) {
+	tc := &TokenCounter{
 		encoders: make(map[string]*tiktoken.Tiktoken),
+		model:    model,
 	}
+
+	// Pre-initialize encoder for the specified model
+	_, err := tc.getEncoder(model)
+	if err != nil {
+		return nil, fmt.Errorf("failed to initialize token counter for model %s: %w", model, err)
+	}
+
+	return tc, nil
 }
 
-// Count counts tokens for a given text and model
-func (tc *TokenCounter) Count(ctx context.Context, text string, model string) (int, error) {
-	encoder, err := tc.getEncoder(model)
+// Count counts tokens for a given text
+func (tc *TokenCounter) Count(text string) int {
+	if text == "" {
+		return 0
+	}
+
+	encoder, err := tc.getEncoder(tc.model)
 	if err != nil {
-		slog.WarnContext(ctx, "Failed to get encoder, using fallback estimation",
-			"model", model, "error", err)
-		return tc.fallbackEstimate(text), nil
+		slog.Warn("Failed to get encoder, using fallback estimation",
+			"model", tc.model, "error", err)
+		return tc.fallbackEstimate(text)
 	}
 
 	tokens := encoder.Encode(text, nil, nil)
-	return len(tokens), nil
+	return len(tokens)
 }
 
 // CountMessages counts tokens for a conversation
-func (tc *TokenCounter) CountMessages(ctx context.Context, messages []Message, model string) (int, error) {
+func (tc *TokenCounter) CountMessages(messages []Message) int {
 	totalTokens := 0
 
 	for _, msg := range messages {
 		// Count tokens for message content
-		contentTokens, err := tc.Count(ctx, msg.Content, model)
-		if err != nil {
-			return 0, fmt.Errorf("failed to count tokens for message: %w", err)
-		}
+		contentTokens := tc.Count(msg.Content)
 
 		// Add tokens for role and formatting (approximate)
-		roleTokens := len(msg.Role) / 3 // Approximate tokens for role
-		formattingTokens := 4           // Approximate tokens for message formatting
-
-		totalTokens += contentTokens + roleTokens + formattingTokens
+		// In average ~4 tokens per message for role and formatting
+		totalTokens += contentTokens + 4
 	}
 
-	// Add tokens for system overhead
-	totalTokens += 10
+	return totalTokens
+}
 
-	return totalTokens, nil
+// CountPrompt counts tokens for system prompt
+func (tc *TokenCounter) CountPrompt(prompt string) int {
+	return tc.Count(prompt) + 2 // +2 tokens for system role
+}
+
+// EstimateContextSize estimates total context size
+func (tc *TokenCounter) EstimateContextSize(systemPrompt string, messages []Message) int {
+	return tc.CountPrompt(systemPrompt) + tc.CountMessages(messages)
+}
+
+// ValidateContextSize checks if context fits within limit
+func (tc *TokenCounter) ValidateContextSize(systemPrompt string, messages []Message, maxTokens int) (bool, int) {
+	totalTokens := tc.EstimateContextSize(systemPrompt, messages)
+	return totalTokens <= maxTokens, totalTokens
+}
+
+// GetModel returns the model name
+func (tc *TokenCounter) GetModel() string {
+	return tc.model
 }
 
 // getEncoder gets or creates an encoder for the specified model
@@ -96,7 +122,6 @@ func (tc *TokenCounter) getEncodingName(model string) string {
 // fallbackEstimate provides a fallback token estimation when tiktoken fails
 func (tc *TokenCounter) fallbackEstimate(text string) int {
 	// Improved approximation: 3.5 characters per token for English text
-	// This is better than the 4 chars per token used previously
 	return len(text)/3 + 1
 }
 
@@ -106,15 +131,38 @@ type Message struct {
 	Content string
 }
 
-// DefaultTokenCounter is a global instance for convenience
-var DefaultTokenCounter = NewTokenCounter()
+// GlobalTokenCounter is a global instance for default usage
+var GlobalTokenCounter *TokenCounter
 
-// CountText is a convenience function for counting tokens in text
-func CountText(ctx context.Context, text string, model string) (int, error) {
-	return DefaultTokenCounter.Count(ctx, text, model)
+// InitGlobalTokenCounter initializes the global token counter
+func InitGlobalTokenCounter(model string) error {
+	counter, err := NewTokenCounter(model)
+	if err != nil {
+		return err
+	}
+	GlobalTokenCounter = counter
+	slog.Info("Global token counter initialized", "model", model)
+	return nil
 }
 
-// CountMessages is a convenience function for counting tokens in messages
-func CountMessages(ctx context.Context, messages []Message, model string) (int, error) {
-	return DefaultTokenCounter.CountMessages(ctx, messages, model)
+// CountWithGlobal uses global counter for counting
+func CountWithGlobal(text string) int {
+	if GlobalTokenCounter == nil {
+		// Fallback to simple heuristic if global not initialized
+		return len(text)/3 + 1
+	}
+	return GlobalTokenCounter.Count(text)
+}
+
+// CountMessagesWithGlobal uses global counter for messages
+func CountMessagesWithGlobal(messages []Message) int {
+	if GlobalTokenCounter == nil {
+		// Fallback to simple heuristic
+		total := 0
+		for _, msg := range messages {
+			total += len(msg.Content)/3 + 1 + 4 // content + formatting
+		}
+		return total
+	}
+	return GlobalTokenCounter.CountMessages(messages)
 }

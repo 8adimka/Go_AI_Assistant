@@ -15,9 +15,10 @@ import (
 	"github.com/8adimka/Go_AI_Assistant/internal/metrics"
 	"github.com/8adimka/Go_AI_Assistant/internal/redisx"
 	"github.com/8adimka/Go_AI_Assistant/internal/retry"
+	"github.com/8adimka/Go_AI_Assistant/internal/tokens"
 	"github.com/8adimka/Go_AI_Assistant/internal/tools/factory"
 	"github.com/8adimka/Go_AI_Assistant/internal/tools/registry"
-	"github.com/openai/openai-go/v2"
+	"github.com/openai/openai-go"
 )
 
 // UnifiedAssistant provides comprehensive context management with AI summarization
@@ -30,6 +31,7 @@ type UnifiedAssistant struct {
 	promptManager  *PromptManager
 	contextManager chat.ContextManagerInterface
 	cfg            *config.Config
+	fallbackMode   bool // Graceful degradation mode
 }
 
 // New creates a new unified assistant with enhanced context management
@@ -63,12 +65,19 @@ func New(appMetrics *metrics.Metrics) *UnifiedAssistant {
 	// Use the actual OpenAI client for summarization
 	openAIClient := openai.NewClient()
 
-	// Use context manager with Redis storage and AI summarization
+	// Create token counter for precise token counting
+	tokenCounter, err := tokens.NewTokenCounter(cfg.OpenAIModel)
+	if err != nil {
+		slog.Warn("Failed to create precise token counter, using fallback", "error", err)
+		tokenCounter = nil
+	}
+
+	// Use context manager with Redis storage and token counter
 	contextManager := chat.NewContextManager(
 		contextCache,
 		maxTokens,
 		maxHistory,
-		&openAIClient,
+		tokenCounter,
 	)
 
 	return &UnifiedAssistant{
@@ -145,15 +154,11 @@ func (ua *UnifiedAssistant) Title(ctx context.Context, conv *model.Conversation)
 		return "", errors.New("empty response from OpenAI for title generation")
 	}
 
-	// Record OpenAI metrics
+	// Record OpenAI metrics with token usage
 	if ua.metrics != nil {
-		usage := metrics.TokenUsage{
-			PromptTokens:     int(resp.Usage.PromptTokens),
-			CompletionTokens: int(resp.Usage.CompletionTokens),
-			TotalTokens:      int(resp.Usage.TotalTokens),
-		}
-		ua.metrics.RecordOpenAITokens(ctx, "title", string(openai.ChatModelGPT4Turbo),
-			conv.UserID, conv.Platform, usage, duration)
+		ua.metrics.RecordOpenAIRequestWithTokens(ctx, "title", string(openai.ChatModelGPT4Turbo),
+			conv.UserID, conv.Platform, duration,
+			int64(resp.Usage.PromptTokens), int64(resp.Usage.CompletionTokens), int64(resp.Usage.TotalTokens))
 	}
 
 	// Log OpenAI API call with token usage
@@ -343,15 +348,17 @@ func (ua *UnifiedAssistant) Reply(ctx context.Context, conv *model.Conversation)
 			return "", errors.New("no choices returned by OpenAI")
 		}
 
-		// Record OpenAI metrics
+		// Record OpenAI metrics with token usage
 		if ua.metrics != nil {
-			usage := metrics.TokenUsage{
-				PromptTokens:     int(resp.Usage.PromptTokens),
-				CompletionTokens: int(resp.Usage.CompletionTokens),
-				TotalTokens:      int(resp.Usage.TotalTokens),
-			}
-			ua.metrics.RecordOpenAITokens(ctx, "reply", string(openai.ChatModelGPT4_1),
-				conv.UserID, conv.Platform, usage, duration)
+			ua.metrics.RecordOpenAIRequestWithTokens(ctx, "reply", string(openai.ChatModelGPT4_1),
+				conv.UserID, conv.Platform, duration,
+				int64(resp.Usage.PromptTokens), int64(resp.Usage.CompletionTokens), int64(resp.Usage.TotalTokens))
+
+			// Record context token count
+			ua.metrics.RecordContextTokenCount(ctx, conversationID, conv.Platform, int64(currentTokenCount))
+
+			// Record token estimation error
+			ua.metrics.RecordTokenEstimationError(ctx, "reply", estimatedTokens, int(resp.Usage.PromptTokens))
 		}
 
 		// Log OpenAI API call with token usage
@@ -413,143 +420,6 @@ func (ua *UnifiedAssistant) Reply(ctx context.Context, conv *model.Conversation)
 	return "", errors.New("too many tool calls, unable to generate reply")
 }
 
-// performIntelligentSummarization performs AI-powered summarization to reduce context size
-func (ua *UnifiedAssistant) performIntelligentSummarization(ctx context.Context, conversationID string) error {
-	slog.InfoContext(ctx, "Performing intelligent summarization",
-		"conversation_id", conversationID)
-
-	// Get current context
-	currentContext := ua.contextManager.GetContext(conversationID)
-	if len(currentContext) <= 2 {
-		return errors.New("not enough messages to summarize")
-	}
-
-	// Try AI summarization first
-	if ua.canUseAISummarization() {
-		summary, err := ua.performAISummarization(ctx, currentContext)
-		if err == nil {
-			slog.InfoContext(ctx, "AI summarization successful",
-				"conversation_id", conversationID,
-				"summary_length", len(summary))
-			return ua.applyAISummary(ctx, conversationID, summary)
-		}
-		slog.WarnContext(ctx, "AI summarization failed, falling back to basic summarization",
-			"conversation_id", conversationID, "error", err)
-	}
-
-	// Fallback to basic summarization
-	return ua.performBasicSummarization(ctx, conversationID)
-}
-
-// canUseAISummarization checks if AI summarization is available
-func (ua *UnifiedAssistant) canUseAISummarization() bool {
-	return ua.cfg.OpenAIApiKey != ""
-}
-
-// performAISummarization creates an AI summary of the conversation
-func (ua *UnifiedAssistant) performAISummarization(ctx context.Context, messages []chat.Message) (string, error) {
-	// Prepare conversation text for summarization
-	var conversationText strings.Builder
-	for _, msg := range messages {
-		conversationText.WriteString(fmt.Sprintf("%s: %s\n", msg.Role, msg.Content))
-	}
-
-	// Create summarization prompt
-	prompt := fmt.Sprintf(`Please summarize the following conversation, focusing on key points, decisions, and important information. Keep the summary concise but informative.
-
-Conversation:
-%s
-
-Summary:`, conversationText.String())
-
-	// Call OpenAI for summarization
-	resp, err := ua.cli.Chat.Completions.New(ctx, openai.ChatCompletionNewParams{
-		Model: openai.ChatModelGPT4Turbo,
-		Messages: []openai.ChatCompletionMessageParamUnion{
-			openai.SystemMessage("You are a helpful assistant that creates concise summaries of conversations."),
-			openai.UserMessage(prompt),
-		},
-		MaxTokens: openai.Int(200), // Limit summary length
-	})
-
-	if err != nil {
-		return "", fmt.Errorf("failed to generate summary: %w", err)
-	}
-
-	if len(resp.Choices) == 0 || strings.TrimSpace(resp.Choices[0].Message.Content) == "" {
-		return "", fmt.Errorf("empty summary response")
-	}
-
-	return resp.Choices[0].Message.Content, nil
-}
-
-// applyAISummary applies the AI summary to the conversation context
-func (ua *UnifiedAssistant) applyAISummary(ctx context.Context, conversationID string, summary string) error {
-	// Clear current context
-	ua.contextManager.ClearContext(conversationID)
-
-	// Add summary as system message
-	summaryMessage := chat.ConvertModelMessage(&model.Message{
-		Role:    model.RoleAssistant, // Use assistant role for summary
-		Content: fmt.Sprintf("Previous conversation summary: %s", summary),
-	})
-	if err := ua.contextManager.AddMessage(ctx, conversationID, summaryMessage); err != nil {
-		return fmt.Errorf("failed to add summary message: %w", err)
-	}
-
-	// Keep only the most recent messages (2-3 messages)
-	currentContext := ua.contextManager.GetContext(conversationID)
-	keepCount := 3
-	if len(currentContext) < keepCount {
-		keepCount = len(currentContext)
-	}
-
-	for i := len(currentContext) - keepCount; i < len(currentContext); i++ {
-		if err := ua.contextManager.AddMessage(ctx, conversationID, currentContext[i]); err != nil {
-			slog.WarnContext(ctx, "Failed to add message during AI summarization",
-				"conversation_id", conversationID, "error", err)
-		}
-	}
-
-	return nil
-}
-
-// performBasicSummarization performs basic summarization without AI
-func (ua *UnifiedAssistant) performBasicSummarization(ctx context.Context, conversationID string) error {
-	slog.InfoContext(ctx, "Performing basic summarization",
-		"conversation_id", conversationID)
-
-	// Get current context
-	currentContext := ua.contextManager.GetContext(conversationID)
-	if len(currentContext) <= 2 {
-		return errors.New("not enough messages to summarize")
-	}
-
-	// Keep only the most recent messages (emergency fallback)
-	keepCount := 3 // Keep last 3 messages
-	if len(currentContext) < keepCount {
-		keepCount = len(currentContext)
-	}
-
-	// Clear current context
-	ua.contextManager.ClearContext(conversationID)
-
-	// Add back only the most recent messages
-	for i := len(currentContext) - keepCount; i < len(currentContext); i++ {
-		if err := ua.contextManager.AddMessage(ctx, conversationID, currentContext[i]); err != nil {
-			slog.WarnContext(ctx, "Failed to add message during basic summarization",
-				"conversation_id", conversationID, "error", err)
-		}
-	}
-
-	slog.InfoContext(ctx, "Basic summarization completed",
-		"conversation_id", conversationID,
-		"original_messages", len(currentContext),
-		"kept_messages", keepCount)
-
-	return nil
-}
-
 // formatTitle formats and validates the title
 func (ua *UnifiedAssistant) formatTitle(title string) string {
 	// Remove extra spaces and newlines
@@ -594,15 +464,18 @@ func (ua *UnifiedAssistant) toTitleCase(s string) string {
 }
 
 // convertToolsToOpenAIFormat converts registered tools to OpenAI tool format
-func (ua *UnifiedAssistant) convertToolsToOpenAIFormat() []openai.ChatCompletionToolUnionParam {
-	var tools []openai.ChatCompletionToolUnionParam
+func (ua *UnifiedAssistant) convertToolsToOpenAIFormat() []openai.ChatCompletionToolParam {
+	var tools []openai.ChatCompletionToolParam
 
 	for _, tool := range ua.toolRegistry.GetAll() {
-		tools = append(tools, openai.ChatCompletionFunctionTool(openai.FunctionDefinitionParam{
-			Name:        tool.Name(),
-			Description: openai.String(tool.Description()),
-			Parameters:  openai.FunctionParameters(tool.Parameters()),
-		}))
+		tools = append(tools, openai.ChatCompletionToolParam{
+			Type: "function",
+			Function: openai.FunctionDefinitionParam{
+				Name:        tool.Name(),
+				Description: openai.String(tool.Description()),
+				Parameters:  openai.FunctionParameters(tool.Parameters()),
+			},
+		})
 	}
 
 	return tools
@@ -626,7 +499,7 @@ func (ua *UnifiedAssistant) executeTool(ctx context.Context, toolName string, ar
 }
 
 // estimateTokenCount estimates the total token count for messages and tools
-func (ua *UnifiedAssistant) estimateTokenCount(msgs []openai.ChatCompletionMessageParamUnion, tools []openai.ChatCompletionToolUnionParam) int {
+func (ua *UnifiedAssistant) estimateTokenCount(msgs []openai.ChatCompletionMessageParamUnion, tools []openai.ChatCompletionToolParam) int {
 	totalTokens := 0
 
 	// Simple but improved approximation: convert all messages to JSON string and count characters
@@ -675,4 +548,76 @@ func (ua *UnifiedAssistant) isContextLengthExceededError(err error) bool {
 		strings.Contains(errStr, "too many tokens") ||
 		strings.Contains(errStr, "token limit exceeded") ||
 		strings.Contains(errStr, "context window")
+}
+
+// EnableFallbackMode enables graceful degradation mode
+func (ua *UnifiedAssistant) EnableFallbackMode() {
+	ua.fallbackMode = true
+	slog.Info("Fallback mode enabled - using degraded functionality")
+}
+
+// DisableFallbackMode disables graceful degradation mode
+func (ua *UnifiedAssistant) DisableFallbackMode() {
+	ua.fallbackMode = false
+	slog.Info("Fallback mode disabled - using full functionality")
+}
+
+// generateFallbackTitle generates a simple title when OpenAI is unavailable
+func (ua *UnifiedAssistant) generateFallbackTitle(userMessage string) string {
+	// Simple fallback: use first few words of user message
+	words := strings.Fields(userMessage)
+	if len(words) > 5 {
+		words = words[:5]
+	}
+	fallbackTitle := strings.Join(words, " ") + "..."
+	return ua.formatTitle(fallbackTitle)
+}
+
+// generateFallbackReply generates a simple reply when OpenAI is unavailable
+func (ua *UnifiedAssistant) generateFallbackReply(ctx context.Context, conv *model.Conversation) string {
+	slog.WarnContext(ctx, "Using fallback reply due to OpenAI unavailability",
+		"conversation_id", conv.ID.Hex(),
+		"user_id", conv.UserID)
+
+	// Simple fallback responses
+	fallbackResponses := []string{
+		"I'm currently experiencing technical difficulties. Please try again later.",
+		"Sorry, I'm having trouble processing your request right now.",
+		"System temporarily unavailable. Please check back in a few minutes.",
+		"Unable to generate response at this time. Please try again.",
+	}
+
+	// Use conversation ID to deterministically select a response
+	hash := int(conv.ID.Hex()[0]) % len(fallbackResponses)
+	return fallbackResponses[hash]
+}
+
+// executeToolWithFallback executes a tool with graceful degradation
+func (ua *UnifiedAssistant) executeToolWithFallback(ctx context.Context, toolName string, arguments string) (string, error) {
+	tool := ua.toolRegistry.Get(toolName)
+	if tool == nil {
+		return "", errors.New("unknown tool: " + toolName)
+	}
+
+	// Parse JSON arguments
+	var args map[string]interface{}
+	if err := json.Unmarshal([]byte(arguments), &args); err != nil {
+		return "", errors.New("failed to parse tool arguments: " + err.Error())
+	}
+
+	// Execute the tool with timeout
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+
+	result, err := tool.Execute(ctx, args)
+	if err != nil {
+		slog.WarnContext(ctx, "Tool execution failed, using fallback",
+			"tool_name", toolName,
+			"error", err)
+
+		// Return informative message instead of error
+		return fmt.Sprintf("Unable to execute %s: %s", toolName, err.Error()), nil
+	}
+
+	return result, nil
 }

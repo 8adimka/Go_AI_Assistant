@@ -4,12 +4,11 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"strings"
 	"sync"
 
 	"github.com/8adimka/Go_AI_Assistant/internal/chat/model"
 	"github.com/8adimka/Go_AI_Assistant/internal/redisx"
-	"github.com/openai/openai-go/v2"
+	"github.com/8adimka/Go_AI_Assistant/internal/tokens"
 )
 
 // Message represents a conversation message
@@ -36,46 +35,39 @@ type ContextManagerInterface interface {
 	EnsureContextFits(ctx context.Context, conversationID string, targetTokens int) error
 }
 
-// StorageStrategy defines the strategy for context storage
-type StorageStrategy int
-
-const (
-	// StorageStrategyRedis - use Redis for persistent storage (primary)
-	StorageStrategyRedis StorageStrategy = iota
-	// StorageStrategyMemory - use in-memory storage (fallback)
-	StorageStrategyMemory
-	// StorageStrategyHybrid - use Redis with memory fallback
-	StorageStrategyHybrid
-)
-
-// SummarizationStrategy defines the strategy for context summarization
-type SummarizationStrategy int
-
-const (
-	// SummarizationStrategyAI - use AI-powered summarization
-	SummarizationStrategyAI SummarizationStrategy = iota
-	// SummarizationStrategyBasic - use basic reduction without AI
-	SummarizationStrategyBasic
-	// SummarizationStrategyHybrid - try AI first, fallback to basic
-	SummarizationStrategyHybrid
-)
-
 // ContextManager provides persistent context management with Redis storage
 type ContextManager struct {
 	mu           sync.RWMutex
 	cache        *redisx.Cache
-	openAIClient *openai.Client
 	maxTokens    int
 	maxHistory   int
+	tokenCounter *tokens.TokenCounter
 }
 
 // NewContextManager creates a new persistent context manager
-func NewContextManager(cache *redisx.Cache, maxTokens, maxHistory int, openAIClient *openai.Client) *ContextManager {
+func NewContextManager(cache *redisx.Cache, maxTokens, maxHistory int, tokenCounter *tokens.TokenCounter) *ContextManager {
 	return &ContextManager{
 		cache:        cache,
-		openAIClient: openAIClient,
 		maxTokens:    maxTokens,
 		maxHistory:   maxHistory,
+		tokenCounter: tokenCounter,
+	}
+}
+
+// NewContextManagerWithDefault creates a manager with default token counter
+func NewContextManagerWithDefault(cache *redisx.Cache, maxTokens, maxHistory int) *ContextManager {
+	var tokenCounter *tokens.TokenCounter
+
+	// Try to use global counter if available
+	if tokens.GlobalTokenCounter != nil {
+		tokenCounter = tokens.GlobalTokenCounter
+	}
+
+	return &ContextManager{
+		cache:        cache,
+		maxTokens:    maxTokens,
+		maxHistory:   maxHistory,
+		tokenCounter: tokenCounter,
 	}
 }
 
@@ -123,12 +115,24 @@ func (cm *ContextManager) GetContext(conversationID string) []Message {
 // GetTokenCount returns the current token count for a conversation
 func (cm *ContextManager) GetTokenCount(conversationID string) int {
 	messages := cm.GetContext(conversationID)
-	totalTokens := 0
 
+	if cm.tokenCounter != nil {
+		// Convert messages to tokens.Message format
+		tokenMessages := make([]tokens.Message, len(messages))
+		for i, msg := range messages {
+			tokenMessages[i] = tokens.Message{
+				Role:    msg.Role,
+				Content: msg.Content,
+			}
+		}
+		return cm.tokenCounter.CountMessages(tokenMessages)
+	}
+
+	// Fallback to existing logic
+	totalTokens := 0
 	for _, msg := range messages {
 		totalTokens += cm.estimateTokens(msg.Content)
 	}
-
 	return totalTokens
 }
 
@@ -170,17 +174,7 @@ func (cm *ContextManager) EnsureContextFits(ctx context.Context, conversationID 
 		"current_tokens", currentTokens,
 		"target_tokens", targetTokens)
 
-	// Try AI summarization first if available
-	if cm.openAIClient != nil {
-		if err := cm.performAISummarization(ctx, conversationID, messages); err == nil {
-			slog.InfoContext(ctx, "AI summarization successful", "conversation_id", conversationID)
-			return nil
-		}
-		slog.WarnContext(ctx, "AI summarization failed, using basic reduction",
-			"conversation_id", conversationID)
-	}
-
-	// Fallback to basic reduction
+	// Use basic reduction
 	return cm.performBasicReduction(ctx, conversationID, messages, targetTokens)
 }
 
@@ -211,74 +205,6 @@ func (cm *ContextManager) generateContextKey(conversationID string) string {
 	return fmt.Sprintf("context:%s", conversationID)
 }
 
-// performAISummarization performs AI-powered summarization with persistent storage
-func (cm *ContextManager) performAISummarization(ctx context.Context, conversationID string, messages []Message) error {
-	if len(messages) <= 2 {
-		return fmt.Errorf("not enough messages to summarize")
-	}
-
-	// Prepare conversation text for summarization
-	var conversationText strings.Builder
-	for _, msg := range messages {
-		conversationText.WriteString(fmt.Sprintf("%s: %s\n", msg.Role, msg.Content))
-	}
-
-	// Create summarization prompt
-	prompt := fmt.Sprintf(`Please summarize the following conversation, focusing on key points, decisions, and important information. Keep the summary concise but informative.
-
-Conversation:
-%s
-
-Summary:`, conversationText.String())
-
-	// Call OpenAI for summarization
-	resp, err := cm.openAIClient.Chat.Completions.New(ctx, openai.ChatCompletionNewParams{
-		Model: openai.ChatModelGPT4Turbo,
-		Messages: []openai.ChatCompletionMessageParamUnion{
-			openai.SystemMessage("You are a helpful assistant that creates concise summaries of conversations."),
-			openai.UserMessage(prompt),
-		},
-		MaxTokens: openai.Int(200),
-	})
-
-	if err != nil {
-		return fmt.Errorf("failed to generate summary: %w", err)
-	}
-
-	if len(resp.Choices) == 0 || strings.TrimSpace(resp.Choices[0].Message.Content) == "" {
-		return fmt.Errorf("empty summary response")
-	}
-
-	summary := resp.Choices[0].Message.Content
-
-	// Apply summary to persistent storage
-	cm.ClearContext(conversationID)
-
-	// Add summary as system message
-	summaryMessage := Message{
-		Role:    "assistant",
-		Content: fmt.Sprintf("Previous conversation summary: %s", summary),
-	}
-	if err := cm.saveContext(ctx, conversationID, []Message{summaryMessage}); err != nil {
-		return fmt.Errorf("failed to save summary: %w", err)
-	}
-
-	// Keep only the most recent messages
-	keepCount := 3
-	if len(messages) < keepCount {
-		keepCount = len(messages)
-	}
-
-	for i := len(messages) - keepCount; i < len(messages); i++ {
-		if err := cm.AddMessage(ctx, conversationID, messages[i]); err != nil {
-			slog.WarnContext(ctx, "Failed to add message during AI summarization",
-				"conversation_id", conversationID, "error", err)
-		}
-	}
-
-	return nil
-}
-
 // performBasicReduction performs basic context reduction without AI
 func (cm *ContextManager) performBasicReduction(ctx context.Context, conversationID string, messages []Message, targetTokens int) error {
 	currentTokens := 0
@@ -300,9 +226,10 @@ func (cm *ContextManager) performBasicReduction(ctx context.Context, conversatio
 
 // estimateTokens provides improved token estimation
 func (cm *ContextManager) estimateTokens(text string) int {
-	// Improved approximation: 3.5 characters per token for English text
-	// This is better than the 4 chars per token used previously
-	// For production, consider using tiktoken library for exact counting
+	if cm.tokenCounter != nil {
+		return cm.tokenCounter.Count(text)
+	}
+	// Fallback to existing heuristic
 	return len(text)/3 + 1
 }
 
